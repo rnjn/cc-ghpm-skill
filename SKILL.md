@@ -48,6 +48,20 @@ cd ~/.claude/skills/ghpm
 uv run python scripts/update_items.py --project <name> --items <nums> --field <field> --value <value> [--yes]
 ```
 
+### Download Issues
+**Intent**: Export all project items (issues, PRs, drafts) to a file
+**Script**: `download_issues.py`
+**Example invocations**:
+- "ghpm: download backend issues to CSV"
+- "ghpm: export frontend project items as json"
+
+**Execution**:
+```bash
+cd ~/.claude/skills/ghpm
+uv run python scripts/download_issues.py --project <name> [--format json|csv] [--output-file <path>]
+```
+Writes `<project>-items-YYYY-MM-DD.<ext>` in the current directory when `--output-file` is omitted.
+
 ### Show Iterations
 **Intent**: Display iteration info for a project
 **Example invocations**:
