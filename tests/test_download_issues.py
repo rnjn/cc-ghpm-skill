@@ -90,3 +90,27 @@ class TestItemToRecord:
         assert record["type"] is None
         assert record["number"] is None
         assert record["assignees"] == []
+
+
+import json
+
+from scripts.download_issues import export_to_json
+
+
+class TestExportToJson:
+    def test_wraps_records_with_metadata(self):
+        records = [
+            {"number": 1, "title": "a", "type": "Issue", "state": "OPEN",
+             "url": "u", "assignees": ["alice"], "fields": {"Status": "Todo"}},
+        ]
+        out = export_to_json(records, "backend", "2026-06-26T14:32:00Z")
+        parsed = json.loads(out)
+        assert parsed["project"] == "backend"
+        assert parsed["exported_at"] == "2026-06-26T14:32:00Z"
+        assert parsed["count"] == 1
+        assert parsed["items"] == records
+
+    def test_empty_records(self):
+        parsed = json.loads(export_to_json([], "backend", "2026-06-26T00:00:00Z"))
+        assert parsed["count"] == 0
+        assert parsed["items"] == []

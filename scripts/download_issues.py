@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 
@@ -40,3 +41,16 @@ def item_to_record(item: dict[str, Any]) -> dict[str, Any]:
         "assignees": assignees,
         "fields": extract_fields(item),
     }
+
+
+def export_to_json(records: list[dict[str, Any]], project: str, timestamp: str) -> str:
+    """Serialize records into the JSON export wrapper."""
+    return json.dumps(
+        {
+            "project": project,
+            "exported_at": timestamp,
+            "count": len(records),
+            "items": records,
+        },
+        indent=2,
+    )
