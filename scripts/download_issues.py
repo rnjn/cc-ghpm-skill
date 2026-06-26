@@ -21,3 +21,22 @@ def extract_fields(item: dict[str, Any]) -> dict[str, str]:
         elif "title" in fv:
             result[name] = fv["title"]
     return result
+
+
+def item_to_record(item: dict[str, Any]) -> dict[str, Any]:
+    """Normalize a raw project item into a flat export record."""
+    content = item.get("content") or {}
+    assignees = [
+        n.get("login")
+        for n in content.get("assignees", {}).get("nodes", [])
+        if n.get("login")
+    ]
+    return {
+        "number": content.get("number"),
+        "title": content.get("title"),
+        "type": content.get("__typename"),
+        "state": content.get("state"),
+        "url": content.get("url"),
+        "assignees": assignees,
+        "fields": extract_fields(item),
+    }
