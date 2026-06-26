@@ -29,3 +29,7 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Downloaded exports
+*.csv
+*.json
