@@ -290,17 +290,24 @@ def get_project_items(
                     nodes {
                         id
                         content {
+                            __typename
                             ... on Issue {
                                 number
                                 title
                                 state
                                 url
+                                assignees(first: 10) { nodes { login } }
                             }
                             ... on PullRequest {
                                 number
                                 title
                                 state
                                 url
+                                assignees(first: 10) { nodes { login } }
+                            }
+                            ... on DraftIssue {
+                                title
+                                assignees(first: 10) { nodes { login } }
                             }
                         }
                         fieldValues(first: 20) {
@@ -449,15 +456,17 @@ def update_item_field(
     )
 
     # Use stdin to pass complex JSON variables properly
-    request_body = json.dumps({
-        "query": mutation,
-        "variables": {
-            "projectId": project_id,
-            "itemId": item_id,
-            "fieldId": field_id,
-            "value": value,
-        },
-    })
+    request_body = json.dumps(
+        {
+            "query": mutation,
+            "variables": {
+                "projectId": project_id,
+                "itemId": item_id,
+                "fieldId": field_id,
+                "value": value,
+            },
+        }
+    )
 
     result = subprocess.run(
         ["gh", "api", "graphql", "--input", "-"],

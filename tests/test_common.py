@@ -1,5 +1,6 @@
 """Tests for scripts/common.py."""
 
+import json
 from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -273,3 +274,33 @@ class TestResolveIterationKeyword:
 
         with pytest.raises(GHPMError, match="No next"):
             resolve_iteration_keyword(iterations, "next")
+
+
+def test_get_project_items_query_includes_type_assignees_drafts(mock_subprocess_run):
+    """The items query must request __typename, assignees, and draft issues."""
+    from scripts.common import get_project_items
+
+    resp = MagicMock()
+    resp.returncode = 0
+    resp.stdout = json.dumps(
+        {
+            "data": {
+                "node": {
+                    "items": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [],
+                    }
+                }
+            }
+        }
+    )
+    resp.stderr = ""
+    mock_subprocess_run.return_value = resp
+
+    get_project_items("PVT_test")
+
+    cmd = mock_subprocess_run.call_args[0][0]
+    query_arg = next(a for a in cmd if a.startswith("query="))
+    assert "__typename" in query_arg
+    assert "assignees" in query_arg
+    assert "DraftIssue" in query_arg

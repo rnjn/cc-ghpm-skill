@@ -39,12 +39,18 @@ class TestParseArgs:
 
     def test_parses_all_args(self):
         """Should parse all required arguments."""
-        args = parse_args([
-            "--project", "backend",
-            "--items", "123,456",
-            "--field", "Priority",
-            "--value", "P1",
-        ])
+        args = parse_args(
+            [
+                "--project",
+                "backend",
+                "--items",
+                "123,456",
+                "--field",
+                "Priority",
+                "--value",
+                "P1",
+            ]
+        )
         assert args.project == "backend"
         assert args.items == "123,456"
         assert args.field == "Priority"
@@ -52,13 +58,19 @@ class TestParseArgs:
 
     def test_parses_yes_flag(self):
         """Should parse --yes flag."""
-        args = parse_args([
-            "--project", "backend",
-            "--items", "123",
-            "--field", "Priority",
-            "--value", "P1",
-            "--yes",
-        ])
+        args = parse_args(
+            [
+                "--project",
+                "backend",
+                "--items",
+                "123",
+                "--field",
+                "Priority",
+                "--value",
+                "P1",
+                "--yes",
+            ]
+        )
         assert args.yes is True
 
 
@@ -232,12 +244,18 @@ DONE_STATUS=Done
         """Should error if project not found."""
         with patch("scripts.update_items.find_env_file", return_value=mock_config):
             with patch("scripts.update_items.check_gh_auth", return_value=True):
-                result = main([
-                    "--project", "nonexistent",
-                    "--items", "123",
-                    "--field", "Priority",
-                    "--value", "P1",
-                ])
+                result = main(
+                    [
+                        "--project",
+                        "nonexistent",
+                        "--items",
+                        "123",
+                        "--field",
+                        "Priority",
+                        "--value",
+                        "P1",
+                    ]
+                )
         assert result != 0
         output = capsys.readouterr().err
         assert "not found" in output.lower() or "Project" in output
