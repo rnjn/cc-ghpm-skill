@@ -317,9 +317,9 @@ def main(args: list[str] | None = None) -> int:
         if parsed.missing_field:
             filter_parts.append(f'missing "{parsed.missing_field}"')
         if iteration_title:
-            filter_parts.append(f'Iteration: {iteration_title}')
+            filter_parts.append(f"Iteration: {iteration_title}")
         if parsed.status:
-            filter_parts.append(f'Status: {parsed.status}')
+            filter_parts.append(f"Status: {parsed.status}")
         if parsed.open_only:
             filter_parts.append("open only")
 

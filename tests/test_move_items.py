@@ -33,20 +33,29 @@ class TestParseArgs:
 
     def test_parses_project(self):
         """Should parse --project argument."""
-        args = parse_args([
-            "--from-iteration", "previous",
-            "--to-iteration", "current",
-            "--project", "backend",
-        ])
+        args = parse_args(
+            [
+                "--from-iteration",
+                "previous",
+                "--to-iteration",
+                "current",
+                "--project",
+                "backend",
+            ]
+        )
         assert args.project == "backend"
 
     def test_parses_dry_run(self):
         """Should parse --dry-run flag."""
-        args = parse_args([
-            "--from-iteration", "previous",
-            "--to-iteration", "current",
-            "--dry-run",
-        ])
+        args = parse_args(
+            [
+                "--from-iteration",
+                "previous",
+                "--to-iteration",
+                "current",
+                "--dry-run",
+            ]
+        )
         assert args.dry_run is True
 
     def test_dry_run_default_false(self):
@@ -171,11 +180,13 @@ class TestFilterMovableItems:
 
     def test_handles_items_without_iteration(self, sample_items):
         """Should skip items without iteration field."""
-        sample_items.append({
-            "id": "ITEM_5",
-            "content": {"number": 999, "title": "No iteration", "state": "OPEN"},
-            "fieldValues": {"nodes": [{"field": {"name": "Status"}, "name": "Todo"}]},
-        })
+        sample_items.append(
+            {
+                "id": "ITEM_5",
+                "content": {"number": 999, "title": "No iteration", "state": "OPEN"},
+                "fieldValues": {"nodes": [{"field": {"name": "Status"}, "name": "Todo"}]},
+            }
+        )
         result = filter_movable_items(
             sample_items,
             from_iteration_title="Iteration 2",
@@ -260,11 +271,16 @@ DONE_STATUS=Done
         """Should error if specified project not found."""
         with patch("scripts.move_items.find_env_file", return_value=mock_config):
             with patch("scripts.move_items.check_gh_auth", return_value=True):
-                result = main([
-                    "--from-iteration", "previous",
-                    "--to-iteration", "current",
-                    "--project", "nonexistent",
-                ])
+                result = main(
+                    [
+                        "--from-iteration",
+                        "previous",
+                        "--to-iteration",
+                        "current",
+                        "--project",
+                        "nonexistent",
+                    ]
+                )
         assert result != 0
         output = capsys.readouterr().err
         assert "not found" in output.lower() or "Project" in output

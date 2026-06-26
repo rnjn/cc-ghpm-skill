@@ -456,15 +456,17 @@ def update_item_field(
     )
 
     # Use stdin to pass complex JSON variables properly
-    request_body = json.dumps({
-        "query": mutation,
-        "variables": {
-            "projectId": project_id,
-            "itemId": item_id,
-            "fieldId": field_id,
-            "value": value,
-        },
-    })
+    request_body = json.dumps(
+        {
+            "query": mutation,
+            "variables": {
+                "projectId": project_id,
+                "itemId": item_id,
+                "fieldId": field_id,
+                "value": value,
+            },
+        }
+    )
 
     result = subprocess.run(
         ["gh", "api", "graphql", "--input", "-"],

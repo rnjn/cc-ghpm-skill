@@ -283,10 +283,16 @@ def test_get_project_items_query_includes_type_assignees_drafts(mock_subprocess_
     resp = MagicMock()
     resp.returncode = 0
     resp.stdout = json.dumps(
-        {"data": {"node": {"items": {
-            "pageInfo": {"hasNextPage": False, "endCursor": None},
-            "nodes": [],
-        }}}}
+        {
+            "data": {
+                "node": {
+                    "items": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [],
+                    }
+                }
+            }
+        }
     )
     resp.stderr = ""
     mock_subprocess_run.return_value = resp
