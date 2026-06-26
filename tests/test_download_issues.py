@@ -114,3 +114,41 @@ class TestExportToJson:
         parsed = json.loads(export_to_json([], "backend", "2026-06-26T00:00:00Z"))
         assert parsed["count"] == 0
         assert parsed["items"] == []
+
+
+import csv
+import io
+
+from scripts.download_issues import export_to_csv
+
+
+def _rows(csv_text: str) -> list[list[str]]:
+    return list(csv.reader(io.StringIO(csv_text)))
+
+
+class TestExportToCsv:
+    def test_header_is_core_columns_then_field_names(self):
+        rows = _rows(export_to_csv([], ["Status", "Priority"]))
+        assert rows[0] == [
+            "number", "title", "type", "state", "url", "assignees", "Status", "Priority"
+        ]
+
+    def test_row_values_and_dynamic_columns(self):
+        records = [
+            {"number": 123, "title": "Fix bug", "type": "Issue", "state": "OPEN",
+             "url": "https://x/123", "assignees": ["alice", "bob"],
+             "fields": {"Status": "In Progress", "Priority": "P1"}},
+        ]
+        rows = _rows(export_to_csv(records, ["Status", "Priority"]))
+        assert rows[1] == [
+            "123", "Fix bug", "Issue", "OPEN", "https://x/123",
+            "alice;bob", "In Progress", "P1",
+        ]
+
+    def test_empty_cells_for_draft_and_missing_fields(self):
+        records = [
+            {"number": None, "title": "Idea", "type": "DraftIssue", "state": None,
+             "url": None, "assignees": [], "fields": {}},
+        ]
+        rows = _rows(export_to_csv(records, ["Status", "Priority"]))
+        assert rows[1] == ["", "Idea", "DraftIssue", "", "", "", "", ""]

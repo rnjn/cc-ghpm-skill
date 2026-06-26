@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 from typing import Any
 
@@ -54,3 +56,26 @@ def export_to_json(records: list[dict[str, Any]], project: str, timestamp: str) 
         },
         indent=2,
     )
+
+
+CORE_COLUMNS = ["number", "title", "type", "state", "url", "assignees"]
+
+
+def export_to_csv(records: list[dict[str, Any]], field_names: list[str]) -> str:
+    """Serialize records into CSV with core columns plus one column per field."""
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(CORE_COLUMNS + field_names)
+    for r in records:
+        row = [
+            "" if r["number"] is None else r["number"],
+            r["title"] or "",
+            r["type"] or "",
+            r["state"] or "",
+            r["url"] or "",
+            ";".join(r["assignees"]),
+        ]
+        for name in field_names:
+            row.append(r["fields"].get(name, ""))
+        writer.writerow(row)
+    return output.getvalue()
