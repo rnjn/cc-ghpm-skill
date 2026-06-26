@@ -19,7 +19,7 @@ Activate this skill when user message starts with `ghpm:`.
 **Execution**:
 ```bash
 cd ~/.claude/skills/ghpm
-uv run python scripts/move_items.py --from-iteration <from> --to-iteration <to> [--project <name>] [--dry-run]
+uv run python -m scripts.move_items --from-iteration <from> --to-iteration <to> [--project <name>] [--dry-run]
 ```
 
 ### List Issues
@@ -32,7 +32,7 @@ uv run python scripts/move_items.py --from-iteration <from> --to-iteration <to> 
 **Execution**:
 ```bash
 cd ~/.claude/skills/ghpm
-uv run python scripts/list_items.py --project <name> [--missing-field <field>] [--iteration <iter>] [--status <status>] [--open-only]
+uv run python -m scripts.list_items --project <name> [--missing-field <field>] [--iteration <iter>] [--status <status>] [--open-only]
 ```
 
 ### Update Issues
@@ -45,7 +45,7 @@ uv run python scripts/list_items.py --project <name> [--missing-field <field>] [
 **Execution**:
 ```bash
 cd ~/.claude/skills/ghpm
-uv run python scripts/update_items.py --project <name> --items <nums> --field <field> --value <value> [--yes]
+uv run python -m scripts.update_items --project <name> --items <nums> --field <field> --value <value> [--yes]
 ```
 
 ### Download Issues
@@ -58,7 +58,7 @@ uv run python scripts/update_items.py --project <name> --items <nums> --field <f
 **Execution**:
 ```bash
 cd ~/.claude/skills/ghpm
-uv run python scripts/download_issues.py --project <name> [--format json|csv] [--output-file <path>]
+uv run python -m scripts.download_issues --project <name> [--format json|csv] [--output-file <path>]
 ```
 Writes `<project>-items-YYYY-MM-DD.<ext>` in the current directory when `--output-file` is omitted.
 
@@ -71,7 +71,7 @@ Writes `<project>-items-YYYY-MM-DD.<ext>` in the current directory when `--outpu
 **Execution**:
 ```bash
 cd ~/.claude/skills/ghpm
-uv run python scripts/list_items.py --project <name> --show-iterations
+uv run python -m scripts.list_items --project <name> --show-iterations
 ```
 
 ### List Projects
