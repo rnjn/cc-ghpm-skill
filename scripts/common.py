@@ -290,17 +290,24 @@ def get_project_items(
                     nodes {
                         id
                         content {
+                            __typename
                             ... on Issue {
                                 number
                                 title
                                 state
                                 url
+                                assignees(first: 10) { nodes { login } }
                             }
                             ... on PullRequest {
                                 number
                                 title
                                 state
                                 url
+                                assignees(first: 10) { nodes { login } }
+                            }
+                            ... on DraftIssue {
+                                title
+                                assignees(first: 10) { nodes { login } }
                             }
                         }
                         fieldValues(first: 20) {
