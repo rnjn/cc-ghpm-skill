@@ -1,14 +1,21 @@
 """Tests for scripts/to_jira.py."""
 
-from scripts.to_jira import build_adf_description
+import json
+from unittest.mock import patch
+
+import pytest
+
+from scripts.to_jira import (
+    build_adf_description,
+    issue_to_jira,
+    main,
+    parse_args,
+    transform,
+)
 
 
 def _texts(doc):
-    return [
-        c["content"][0]["text"]
-        for c in doc["content"]
-        if c["content"]
-    ]
+    return [c["content"][0]["text"] for c in doc["content"] if c["content"]]
 
 
 class TestBuildAdfDescription:
@@ -37,9 +44,6 @@ class TestBuildAdfDescription:
     def test_empty_body_with_url(self):
         doc = build_adf_description("", "https://x/9")
         assert _texts(doc) == ["Imported from GitHub: https://x/9"]
-
-
-from scripts.to_jira import issue_to_jira
 
 
 class TestIssueToJira:
@@ -77,9 +81,6 @@ class TestIssueToJira:
         assert out["summary"] == ""
 
 
-from scripts.to_jira import transform
-
-
 class TestTransform:
     def test_filters_to_issues_only(self):
         export = {
@@ -96,3 +97,155 @@ class TestTransform:
 
     def test_handles_missing_items_key(self):
         assert transform({}, project_key="S", type_field="Type", default_type="Task") == []
+
+
+EXPORT = {
+    "project": "workX",
+    "count": 2,
+    "items": [
+        {
+            "number": 1,
+            "title": "A",
+            "type": "Issue",
+            "state": "OPEN",
+            "url": "https://x/1",
+            "body": "hello",
+            "assignees": [],
+            "fields": {"Type": "Bug"},
+        },
+        {
+            "number": 2,
+            "title": "PR",
+            "type": "PullRequest",
+            "state": "OPEN",
+            "url": "https://x/2",
+            "body": "",
+            "assignees": [],
+            "fields": {},
+        },
+    ],
+}
+
+
+def _write_export(tmp_path):
+    p = tmp_path / "export.json"
+    p.write_text(json.dumps(EXPORT))
+    return p
+
+
+class TestParseArgs:
+    def test_requires_input_and_project(self):
+        with pytest.raises(SystemExit):
+            parse_args(["--input", "x.json"])  # missing --jira-project
+
+    def test_defaults(self):
+        a = parse_args(["--input", "x.json", "--jira-project", "SCOUT"])
+        assert a.type_field == "Type"
+        assert a.default_type == "Task"
+        assert a.dry_run is False
+        assert a.yes is False
+
+
+class TestMain:
+    def test_dry_run_writes_file_and_skips_acli(self, tmp_path):
+        inp = _write_export(tmp_path)
+        out = tmp_path / "acli.json"
+        with patch("scripts.to_jira.bulk_create") as bc:
+            rc = main(
+                [
+                    "--input",
+                    str(inp),
+                    "--jira-project",
+                    "SCOUT",
+                    "--out",
+                    str(out),
+                    "--dry-run",
+                ]
+            )
+        assert rc == 0
+        bc.assert_not_called()
+        payload = json.loads(out.read_text())
+        assert len(payload["issues"]) == 1  # PR filtered out
+        assert payload["issues"][0]["projectKey"] == "SCOUT"
+
+    def test_invokes_acli_after_confirmation(self, tmp_path):
+        inp = _write_export(tmp_path)
+        out = tmp_path / "acli.json"
+        with patch("scripts.to_jira.acli_available", return_value=True):
+            with patch("scripts.to_jira.bulk_create", return_value=0) as bc:
+                with patch("builtins.input", return_value="y"):
+                    rc = main(
+                        [
+                            "--input",
+                            str(inp),
+                            "--jira-project",
+                            "SCOUT",
+                            "--out",
+                            str(out),
+                        ]
+                    )
+        assert rc == 0
+        bc.assert_called_once_with(str(out), yes=True)
+
+    def test_abort_when_user_declines(self, tmp_path):
+        inp = _write_export(tmp_path)
+        out = tmp_path / "acli.json"
+        with patch("scripts.to_jira.acli_available", return_value=True):
+            with patch("scripts.to_jira.bulk_create") as bc:
+                with patch("builtins.input", return_value="n"):
+                    rc = main(
+                        [
+                            "--input",
+                            str(inp),
+                            "--jira-project",
+                            "SCOUT",
+                            "--out",
+                            str(out),
+                        ]
+                    )
+        assert rc != 0
+        bc.assert_not_called()
+
+    def test_yes_skips_prompt(self, tmp_path):
+        inp = _write_export(tmp_path)
+        out = tmp_path / "acli.json"
+        with patch("scripts.to_jira.acli_available", return_value=True):
+            with patch("scripts.to_jira.bulk_create", return_value=0) as bc:
+                with patch("builtins.input", side_effect=AssertionError("should not prompt")):
+                    rc = main(
+                        [
+                            "--input",
+                            str(inp),
+                            "--jira-project",
+                            "SCOUT",
+                            "--out",
+                            str(out),
+                            "--yes",
+                        ]
+                    )
+        assert rc == 0
+        bc.assert_called_once_with(str(out), yes=True)
+
+    def test_errors_on_missing_acli(self, tmp_path):
+        inp = _write_export(tmp_path)
+        out = tmp_path / "acli.json"
+        with patch("scripts.to_jira.acli_available", return_value=False):
+            with patch("scripts.to_jira.bulk_create") as bc:
+                rc = main(
+                    [
+                        "--input",
+                        str(inp),
+                        "--jira-project",
+                        "SCOUT",
+                        "--out",
+                        str(out),
+                        "--yes",
+                    ]
+                )
+        assert rc != 0
+        bc.assert_not_called()
+
+    def test_bad_input_file_returns_error(self, tmp_path):
+        bad = tmp_path / "nope.json"
+        rc = main(["--input", str(bad), "--jira-project", "SCOUT", "--dry-run"])
+        assert rc != 0

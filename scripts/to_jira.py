@@ -3,7 +3,19 @@
 
 from __future__ import annotations
 
+import argparse
+import json
+import sys
+from pathlib import Path
 from typing import Any
+
+from rich.console import Console
+
+from scripts.acli_client import acli_available, bulk_create
+from scripts.common import get_today
+
+console = Console()
+err_console = Console(stderr=True)
 
 
 def build_adf_description(body: str, url: str | None = None) -> dict[str, Any]:
@@ -11,9 +23,7 @@ def build_adf_description(body: str, url: str | None = None) -> dict[str, Any]:
     content: list[dict[str, Any]] = []
     for line in (body or "").splitlines():
         if line.strip():
-            content.append(
-                {"type": "paragraph", "content": [{"type": "text", "text": line}]}
-            )
+            content.append({"type": "paragraph", "content": [{"type": "text", "text": line}]})
     if url:
         content.append(
             {
@@ -64,3 +74,70 @@ def transform(
             )
         )
     return issues
+
+
+def parse_args(args: list[str] | None = None) -> argparse.Namespace:
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="Import a GHPM JSON export into Jira via acli")
+    parser.add_argument("--input", required=True, help="Path to a GHPM JSON export")
+    parser.add_argument("--jira-project", required=True, help="Jira project key")
+    parser.add_argument("--type-field", default="Type", help="GHPM field used as Jira issue type")
+    parser.add_argument("--default-type", default="Task", help="Jira type when the field is unset")
+    parser.add_argument(
+        "--out", help="Output path (default: <project>-jira-YYYY-MM-DD.json in cwd)"
+    )
+    parser.add_argument("--dry-run", action="store_true", help="Write the file; do not call acli")
+    parser.add_argument(
+        "--yes", action="store_true", help="Skip confirmation and pass --yes to acli"
+    )
+    return parser.parse_args(args)
+
+
+def main(args: list[str] | None = None) -> int:
+    """Main entry point."""
+    parsed = parse_args(args)
+
+    try:
+        export = json.loads(Path(parsed.input).read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        err_console.print(f"[red]Could not read export '{parsed.input}': {e}[/red]")
+        return 1
+
+    issues = transform(
+        export,
+        project_key=parsed.jira_project,
+        type_field=parsed.type_field,
+        default_type=parsed.default_type,
+    )
+
+    project = export.get("project", "export")
+    if parsed.out:
+        out_path = Path(parsed.out)
+    else:
+        out_path = Path.cwd() / f"{project}-jira-{get_today().isoformat()}.json"
+
+    out_path.write_text(json.dumps({"issues": issues}, indent=2))
+    console.print(f"Wrote {len(issues)} issue{'s' if len(issues) != 1 else ''} to {out_path}")
+
+    if parsed.dry_run:
+        return 0
+
+    if not acli_available():
+        err_console.print(
+            "[red]acli not found on PATH.[/red] Install Atlassian CLI and run 'acli jira auth'."
+        )
+        return 1
+
+    if not parsed.yes:
+        answer = input(
+            f"Create {len(issues)} issue(s) in Jira project {parsed.jira_project}? [y/N] "
+        )
+        if answer.strip().lower() not in ("y", "yes"):
+            console.print("Aborted.")
+            return 1
+
+    return bulk_create(str(out_path), yes=True)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
