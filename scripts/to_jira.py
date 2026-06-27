@@ -12,7 +12,7 @@ from typing import Any
 from rich.console import Console
 
 from scripts.acli_client import acli_available, bulk_create
-from scripts.common import get_today
+from scripts.common import GHPMError, get_today
 
 console = Console()
 err_console = Console(stderr=True)
@@ -110,13 +110,23 @@ def main(args: list[str] | None = None) -> int:
         default_type=parsed.default_type,
     )
 
+    # Fix 2: short-circuit if no issues to import
+    if not issues:
+        console.print("No issues to import (export had no Issue-type items).")
+        return 0
+
     project = export.get("project", "export")
     if parsed.out:
         out_path = Path(parsed.out)
     else:
         out_path = Path.cwd() / f"{project}-jira-{get_today().isoformat()}.json"
 
-    out_path.write_text(json.dumps({"issues": issues}, indent=2))
+    # Fix 1: guard the output write
+    try:
+        out_path.write_text(json.dumps({"issues": issues}, indent=2))
+    except OSError as e:
+        err_console.print(f"[red]Could not write output file '{out_path}': {e}[/red]")
+        return 1
     console.print(f"Wrote {len(issues)} issue{'s' if len(issues) != 1 else ''} to {out_path}")
 
     if parsed.dry_run:
@@ -136,7 +146,12 @@ def main(args: list[str] | None = None) -> int:
             console.print("Aborted.")
             return 1
 
-    return bulk_create(str(out_path), yes=True)
+    # Fix 3: catch GHPMError from bulk_create
+    try:
+        return bulk_create(str(out_path), yes=True)
+    except GHPMError as e:
+        err_console.print(f"[red]Error: {e}[/red]")
+        return 1
 
 
 if __name__ == "__main__":

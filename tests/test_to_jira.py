@@ -1,5 +1,6 @@
 """Tests for scripts/to_jira.py."""
 
+import datetime
 import json
 from unittest.mock import patch
 
@@ -249,3 +250,67 @@ class TestMain:
         bad = tmp_path / "nope.json"
         rc = main(["--input", str(bad), "--jira-project", "SCOUT", "--dry-run"])
         assert rc != 0
+
+    # Fix 4: auto-named output path
+    def test_auto_named_output_path(self, tmp_path, monkeypatch):
+        inp = _write_export(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        with patch("scripts.to_jira.get_today", return_value=datetime.date(2026, 6, 27)):
+            rc = main(
+                [
+                    "--input",
+                    str(inp),
+                    "--jira-project",
+                    "workX",
+                    "--dry-run",
+                ]
+            )
+        assert rc == 0
+        expected = tmp_path / "workX-jira-2026-06-27.json"
+        assert expected.exists()
+
+    # Fix 5: zero-issues short-circuit
+    def test_zero_issues_short_circuits(self, tmp_path):
+        empty_export = {
+            "project": "workX",
+            "count": 2,
+            "items": [
+                {
+                    "number": 1,
+                    "title": "PR",
+                    "type": "PullRequest",
+                    "state": "OPEN",
+                    "url": "https://x/1",
+                    "body": "",
+                    "assignees": [],
+                    "fields": {},
+                },
+                {
+                    "number": 2,
+                    "title": "D",
+                    "type": "DraftIssue",
+                    "state": "OPEN",
+                    "url": None,
+                    "body": "",
+                    "assignees": [],
+                    "fields": {},
+                },
+            ],
+        }
+        inp = tmp_path / "empty_export.json"
+        inp.write_text(json.dumps(empty_export))
+        out = tmp_path / "out.json"
+        with patch("scripts.to_jira.bulk_create") as bc:
+            rc = main(
+                [
+                    "--input",
+                    str(inp),
+                    "--jira-project",
+                    "SCOUT",
+                    "--out",
+                    str(out),
+                ]
+            )
+        assert rc == 0
+        bc.assert_not_called()
+        assert not out.exists()
