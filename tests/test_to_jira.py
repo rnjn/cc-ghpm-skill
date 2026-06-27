@@ -66,14 +66,14 @@ class TestIssueToJira:
         )
         assert out["summary"] == "Fix bug"
         assert out["projectKey"] == "SCOUT"
-        assert out["issueType"] == "Bug"
+        assert out["type"] == "Bug"
         assert out["description"]["type"] == "doc"
 
     def test_issue_type_falls_back_to_default(self):
         out = issue_to_jira(
             self._record(fields={}), project_key="SCOUT", type_field="Type", default_type="Task"
         )
-        assert out["issueType"] == "Task"
+        assert out["type"] == "Task"
 
     def test_missing_title_becomes_empty_string(self):
         out = issue_to_jira(
@@ -94,7 +94,7 @@ class TestTransform:
         issues = transform(export, project_key="SCOUT", type_field="Type", default_type="Task")
         assert len(issues) == 1
         assert issues[0]["summary"] == "A"
-        assert issues[0]["issueType"] == "Bug"
+        assert issues[0]["type"] == "Bug"
 
     def test_handles_missing_items_key(self):
         assert transform({}, project_key="S", type_field="Type", default_type="Task") == []
@@ -151,7 +151,7 @@ class TestMain:
     def test_dry_run_writes_file_and_skips_acli(self, tmp_path):
         inp = _write_export(tmp_path)
         out = tmp_path / "acli.json"
-        with patch("scripts.to_jira.bulk_create") as bc:
+        with patch("scripts.to_jira.create_issue") as ci:
             rc = main(
                 [
                     "--input",
@@ -164,54 +164,58 @@ class TestMain:
                 ]
             )
         assert rc == 0
-        bc.assert_not_called()
+        ci.assert_not_called()
         payload = json.loads(out.read_text())
         assert len(payload["issues"]) == 1  # PR filtered out
         assert payload["issues"][0]["projectKey"] == "SCOUT"
 
-    def test_invokes_acli_after_confirmation(self, tmp_path):
+    def test_creates_each_issue_after_confirmation(self, tmp_path):
         inp = _write_export(tmp_path)
         out = tmp_path / "acli.json"
         with patch("scripts.to_jira.acli_available", return_value=True):
-            with patch("scripts.to_jira.bulk_create", return_value=0) as bc:
+            with patch("scripts.to_jira.create_issue", return_value=(0, "created")) as ci:
                 with patch("builtins.input", return_value="y"):
-                    rc = main(
-                        [
-                            "--input",
-                            str(inp),
-                            "--jira-project",
-                            "SCOUT",
-                            "--out",
-                            str(out),
-                        ]
-                    )
+                    rc = main(["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out)])
         assert rc == 0
-        bc.assert_called_once_with(str(out), yes=True)
+        ci.assert_called_once()
+        # called with the issue object (not a path)
+        assert ci.call_args[0][0]["summary"] == "A"
+
+    def test_partial_failure_returns_nonzero(self, tmp_path):
+        # Two Issues; the second create fails.
+        export = {
+            "project": "workX",
+            "items": [
+                {"type": "Issue", "title": "A", "url": "u1", "body": "x", "fields": {}},
+                {"type": "Issue", "title": "B", "url": "u2", "body": "y", "fields": {}},
+            ],
+        }
+        inp = tmp_path / "two.json"
+        inp.write_text(json.dumps(export))
+        out = tmp_path / "acli.json"
+        with patch("scripts.to_jira.acli_available", return_value=True):
+            with patch("scripts.to_jira.create_issue", side_effect=[(0, "ok"), (1, "boom")]) as ci:
+                rc = main(
+                    ["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out), "--yes"]
+                )
+        assert rc != 0
+        assert ci.call_count == 2
 
     def test_abort_when_user_declines(self, tmp_path):
         inp = _write_export(tmp_path)
         out = tmp_path / "acli.json"
         with patch("scripts.to_jira.acli_available", return_value=True):
-            with patch("scripts.to_jira.bulk_create") as bc:
+            with patch("scripts.to_jira.create_issue") as ci:
                 with patch("builtins.input", return_value="n"):
-                    rc = main(
-                        [
-                            "--input",
-                            str(inp),
-                            "--jira-project",
-                            "SCOUT",
-                            "--out",
-                            str(out),
-                        ]
-                    )
+                    rc = main(["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out)])
         assert rc != 0
-        bc.assert_not_called()
+        ci.assert_not_called()
 
     def test_yes_skips_prompt(self, tmp_path):
         inp = _write_export(tmp_path)
         out = tmp_path / "acli.json"
         with patch("scripts.to_jira.acli_available", return_value=True):
-            with patch("scripts.to_jira.bulk_create", return_value=0) as bc:
+            with patch("scripts.to_jira.create_issue", return_value=(0, "created")) as ci:
                 with patch("builtins.input", side_effect=AssertionError("should not prompt")):
                     rc = main(
                         [
@@ -225,13 +229,13 @@ class TestMain:
                         ]
                     )
         assert rc == 0
-        bc.assert_called_once_with(str(out), yes=True)
+        ci.assert_called_once()
 
     def test_errors_on_missing_acli(self, tmp_path):
         inp = _write_export(tmp_path)
         out = tmp_path / "acli.json"
         with patch("scripts.to_jira.acli_available", return_value=False):
-            with patch("scripts.to_jira.bulk_create") as bc:
+            with patch("scripts.to_jira.create_issue") as ci:
                 rc = main(
                     [
                         "--input",
@@ -244,7 +248,7 @@ class TestMain:
                     ]
                 )
         assert rc != 0
-        bc.assert_not_called()
+        ci.assert_not_called()
 
     def test_bad_input_file_returns_error(self, tmp_path):
         bad = tmp_path / "nope.json"
@@ -300,7 +304,7 @@ class TestMain:
         inp = tmp_path / "empty_export.json"
         inp.write_text(json.dumps(empty_export))
         out = tmp_path / "out.json"
-        with patch("scripts.to_jira.bulk_create") as bc:
+        with patch("scripts.to_jira.create_issue") as ci:
             rc = main(
                 [
                     "--input",
@@ -312,5 +316,5 @@ class TestMain:
                 ]
             )
         assert rc == 0
-        bc.assert_not_called()
+        ci.assert_not_called()
         assert not out.exists()

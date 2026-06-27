@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from scripts.acli_client import acli_available, bulk_create
+from scripts.acli_client import acli_available, create_issue
 from scripts.common import GHPMError
 
 
@@ -15,28 +15,36 @@ def test_acli_available_reflects_which(monkeypatch):
     assert acli_available() is False
 
 
-def test_bulk_create_builds_command_with_yes(mock_subprocess_run, monkeypatch):
+def test_create_issue_builds_command_and_returns_output(mock_subprocess_run, monkeypatch):
     monkeypatch.setattr("scripts.acli_client.shutil.which", lambda name: "/usr/bin/acli")
-    mock_subprocess_run.return_value = MagicMock(returncode=0)
+    mock_subprocess_run.return_value = MagicMock(
+        returncode=0, stdout="✓ Work item B14-9 created", stderr=""
+    )
 
-    rc = bulk_create("out.json", yes=True)
+    rc, output = create_issue({"summary": "x", "projectKey": "B14", "type": "Task"})
 
     assert rc == 0
+    assert "B14-9" in output
     cmd = mock_subprocess_run.call_args[0][0]
-    assert cmd == ["acli", "jira", "workitem", "create-bulk", "--from-json", "out.json", "--yes"]
+    assert cmd[:5] == ["acli", "jira", "workitem", "create", "--from-json"]
+    assert cmd[5].endswith(".json")
+    assert mock_subprocess_run.call_args.kwargs.get("capture_output") is True
+    assert mock_subprocess_run.call_args.kwargs.get("text") is True
 
 
-def test_bulk_create_without_yes_omits_flag(mock_subprocess_run, monkeypatch):
+def test_create_issue_returns_nonzero_and_stderr(mock_subprocess_run, monkeypatch):
     monkeypatch.setattr("scripts.acli_client.shutil.which", lambda name: "/usr/bin/acli")
-    mock_subprocess_run.return_value = MagicMock(returncode=2)
+    mock_subprocess_run.return_value = MagicMock(
+        returncode=1, stdout="", stderr="request body invalid"
+    )
 
-    rc = bulk_create("out.json")
+    rc, output = create_issue({"summary": "x"})
 
-    assert rc == 2
-    assert "--yes" not in mock_subprocess_run.call_args[0][0]
+    assert rc == 1
+    assert "request body invalid" in output
 
 
-def test_bulk_create_raises_when_acli_missing(monkeypatch):
+def test_create_issue_raises_when_acli_missing(monkeypatch):
     monkeypatch.setattr("scripts.acli_client.shutil.which", lambda name: None)
     with pytest.raises(GHPMError, match="acli"):
-        bulk_create("out.json")
+        create_issue({"summary": "x"})
