@@ -258,7 +258,13 @@ def main(args: list[str] | None = None) -> int:
             rc, key, output = create_issue(issue)
             if rc == 0:
                 created += 1
-                created_pairs.append((record, key))
+                if key:
+                    created_pairs.append((record, key))
+                else:
+                    err_console.print(
+                        f"[yellow]Warning: created '{label}' but could not capture its key; "
+                        f"status not applied.[/yellow]"
+                    )
                 console.print(f"[{idx}/{total}] created: {label}")
             else:
                 failed += 1
@@ -271,8 +277,6 @@ def main(args: list[str] | None = None) -> int:
 
     groups: dict[str, list[str]] = {}
     for record, key in created_pairs:
-        if not key:
-            continue
         target = status_target(
             record,
             status_field=parsed.status_field,
@@ -283,14 +287,17 @@ def main(args: list[str] | None = None) -> int:
             groups.setdefault(target, []).append(key)
 
     for status, keys in groups.items():
-        rc, out = transition_issues(keys, status)
-        if rc != 0:
-            rc, out = transition_issues(keys, status)  # retry once (indexing lag)
-        if rc == 0:
-            console.print(f"Transitioned {len(keys)} issue(s) -> {status}")
+        success, failed_count, out = transition_issues(keys, status)
+        if failed_count:
+            success, failed_count, out = transition_issues(
+                keys, status
+            )  # retry once (indexing lag)
+        if failed_count == 0:
+            console.print(f"Transitioned {success} issue(s) -> {status}")
         else:
             err_console.print(
-                f"[red]Failed to transition {len(keys)} issue(s) -> {status}: {out.strip()}[/red]"
+                f"[red]Transitioned {success}/{len(keys)} -> {status}; "
+                f"{failed_count} failed: {out.strip()}[/red]"
             )
 
     return 0 if failed == 0 else 1

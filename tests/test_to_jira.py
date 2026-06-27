@@ -528,7 +528,7 @@ class TestMain:
                 "scripts.to_jira.create_issue",
                 side_effect=[(0, "K1", "ok"), (0, "K2", "ok"), (0, "K3", "ok"), (0, "K4", "ok")],
             ):
-                with patch("scripts.to_jira.transition_issues", return_value=(0, "")) as tr:
+                with patch("scripts.to_jira.transition_issues", return_value=(0, 0, "")) as tr:
                     rc = main(
                         ["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out), "--yes"]
                     )
@@ -593,13 +593,43 @@ class TestMain:
         with patch("scripts.to_jira.acli_available", return_value=True):
             with patch("scripts.to_jira.create_issue", side_effect=[(0, "K1", "ok")]):
                 with patch(
-                    "scripts.to_jira.transition_issues", side_effect=[(1, "lag"), (0, "")]
+                    "scripts.to_jira.transition_issues",
+                    side_effect=[(0, 1, "lag"), (1, 0, "")],
                 ) as tr:
                     rc = main(
                         ["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out), "--yes"]
                     )
         assert rc == 0
         assert tr.call_count == 2  # first failed, retried once
+
+    def test_created_without_key_warns_and_skips_transition(self, tmp_path, capsys):
+        export = {
+            "project": "workX",
+            "items": [
+                {
+                    "type": "Issue",
+                    "title": "A",
+                    "url": "u1",
+                    "body": "",
+                    "fields": {"Status": "Done"},
+                },
+            ],
+        }
+        inp = tmp_path / "s.json"
+        inp.write_text(json.dumps(export))
+        out = tmp_path / "acli.json"
+        from unittest.mock import MagicMock
+
+        tr = MagicMock()
+        with patch("scripts.to_jira.acli_available", return_value=True):
+            with patch("scripts.to_jira.create_issue", side_effect=[(0, None, "ok")]):
+                with patch("scripts.to_jira.transition_issues", tr):
+                    rc = main(
+                        ["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out), "--yes"]
+                    )
+        assert rc == 0
+        tr.assert_not_called()
+        assert "could not capture its key" in capsys.readouterr().err
 
     def test_dry_run_prints_status_plan_and_calls_nothing(self, tmp_path, capsys):
         inp = tmp_path / "s.json"

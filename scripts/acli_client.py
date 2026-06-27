@@ -50,10 +50,12 @@ def create_issue(issue: dict[str, Any]) -> tuple[int, str | None, str]:
     return result.returncode, key, (result.stdout or "") + (result.stderr or "")
 
 
-def transition_issues(keys: list[str], status: str) -> tuple[int, str]:
+def transition_issues(keys: list[str], status: str) -> tuple[int, int, str]:
     """Transition the given issue keys to a target status via acli (batched).
 
-    Returns (exit_code, combined_output). Raises GHPMError if acli is missing.
+    Returns (success_count, fail_count, combined_output). Parses --json output
+    from acli to determine real success/failure regardless of exit code.
+    Raises GHPMError if acli is missing.
     """
     if not acli_available():
         raise GHPMError("acli not found on PATH. Install Atlassian CLI and run 'acli jira auth'.")
@@ -69,8 +71,17 @@ def transition_issues(keys: list[str], status: str) -> tuple[int, str]:
             status,
             "--yes",
             "--ignore-errors",
+            "--json",
         ],
         capture_output=True,
         text=True,
     )
-    return result.returncode, (result.stdout or "") + (result.stderr or "")
+    combined = (result.stdout or "") + (result.stderr or "")
+    try:
+        data = json.loads(result.stdout)
+        success_count = data.get("successCount", 0)
+        fail_count = sum(1 for r in data.get("results", []) if r.get("status") != "SUCCESS")
+    except (json.JSONDecodeError, TypeError):
+        success_count = 0
+        fail_count = len(keys)
+    return success_count, fail_count, combined
