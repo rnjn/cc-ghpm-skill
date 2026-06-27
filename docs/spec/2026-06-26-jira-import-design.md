@@ -22,20 +22,30 @@ New/changed code in the ghpm repo (Python, same tooling):
 - `scripts/common.py` — add `body` to the items GraphQL query (Phase 1).
 - `scripts/download_issues.py` — add `body` to each record (Phase 1).
 - `scripts/acli_client.py` — thin wrapper around `acli` subprocess calls
-  (`bulk_create`, later `create_issue`, `field_create`, `transition`). One place
-  to mock in tests. Introduced in Phase 1, extended later.
+  (`create_issue`, later `field_create`, `transition`). One place to mock in
+  tests. Introduced in Phase 1, extended later.
 - `scripts/to_jira.py` — the importer: load a GHPM JSON export, transform,
   write the acli input file, confirm-gate, invoke acli. Grows across phases.
 - `scripts/jira_mapping.py` — field classification + value transforms. Split out
   of `to_jira.py` when it appears in Phase 2 (keeps `to_jira.py` focused).
 
-### Create strategy (changes by phase)
+### Create strategy
 
-- Phase 1 uses `acli jira workitem create-bulk --from-json` (fast, basic fields).
-- From the phase where issues need **custom-field values** or **per-issue
-  transitions**, switch to per-issue `acli jira workitem create --from-json`
-  (single-create supports `additionalAttributes` with `customfield_xxxxx`; bulk
-  does not). This is a deliberate, documented switch, not silent.
+- Phase 1 uses per-issue `acli jira workitem create --from-json`, one acli call
+  per issue, continuing past individual failures and reporting a created/failed
+  summary.
+- **Why not `create-bulk`:** verified during Phase 1 testing that `create-bulk
+  --from-json` cannot carry an ADF `description` — it stringifies the object
+  (stored as a `map[...]` dump) and rejects any plain-string description
+  containing a newline. Per-issue `create` accepts the ADF object and renders
+  multi-paragraph descriptions correctly. The per-issue path is also the
+  direction later phases need anyway (custom-field `additionalAttributes` and
+  per-issue transitions are single-create only).
+- Trade-off accepted: per-issue is N API calls (slower for large imports) in
+  exchange for correct, readable descriptions.
+
+> Note: the per-issue payload uses the key `type` (not `issueType`, which is the
+> `create-bulk` spelling).
 
 ### acli target formats (verified via `acli ... --generate-json`)
 
@@ -72,7 +82,7 @@ New/changed code in the ghpm repo (Python, same tooling):
 
 ## Phase 1 — Core import (foundation)
 
-**Goal:** working bulk import of basic issues, end-to-end against real Jira.
+**Goal:** working import of basic issues, end-to-end against real Jira.
 
 ### Exporter change
 
@@ -96,28 +106,30 @@ Mapping (per Issue → acli issue object):
 |---------------|--------------------------------------------------------------------|
 | `summary`     | record `title`                                                     |
 | `projectKey`  | `--jira-project`                                                   |
-| `issueType`   | value of the `--type-field` field; fall back to `--default-type`    |
+| `type`        | value of the `--type-field` field; fall back to `--default-type`    |
 | `description` | ADF doc from `body`, plus a trailing `Imported from GitHub: <url>` |
 
 Flow (`main`):
 1. Parse args; load + parse the GHPM JSON export.
 2. `transform()` → filter to Issues, map each via `issue_to_jira()`.
-3. Write `{"issues": [...]}` to the output file (auto-named
-   `<project>-jira-YYYY-MM-DD.json` in cwd when `--out` omitted).
-4. `--dry-run`: print summary (count, path); return 0.
-5. Otherwise: verify `acli` on PATH; print count; prompt unless `--yes`; run
-   `acli jira workitem create-bulk --from-json <file>` (append `--yes` when
-   given). Surface acli stderr; return its exit status.
+3. Short-circuit to a clean message + return 0 if there are no Issues.
+4. Write `{"issues": [...]}` to the output file as an inspection artifact
+   (auto-named `<project>-jira-YYYY-MM-DD.json` in cwd when `--out` omitted).
+5. `--dry-run`: print summary (count, path); return 0.
+6. Otherwise: verify `acli` on PATH; prompt unless `--yes`; then create each
+   issue with `acli jira workitem create --from-json` (one temp file per issue),
+   continuing past failures, printing per-issue progress and a final
+   `created/failed` summary. Return 0 if all succeeded, non-zero if any failed.
 
 Components (pure, unit-tested): `build_adf_description(body, url)`,
 `issue_to_jira(record, *, project_key, type_field, default_type)`,
-`transform(export, ...)`, `parse_args`, `main`. `acli_client.bulk_create(path,
-yes)` wraps the subprocess.
+`transform(export, ...)`, `parse_args`, `main`. `acli_client.create_issue(issue)
+-> (rc, output)` wraps the per-issue subprocess call.
 
-**Phase 1 verification (manual):** run `--dry-run`, inspect the file, then import
-one issue against real Jira to confirm acli accepts the ADF `description`. If
-acli wants a plain string, `build_adf_description` returns a string instead —
-isolated change.
+**Phase 1 verification (manual) — completed:** confirmed against real Jira
+(project B14) that per-issue `create` renders the ADF `description` correctly
+(multi-paragraph body + URL footer). `create-bulk` was rejected for this purpose
+(see Create strategy above).
 
 ---
 

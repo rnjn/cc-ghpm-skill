@@ -3,8 +3,12 @@
 
 from __future__ import annotations
 
+import json
+import os
 import shutil
 import subprocess
+import tempfile
+from typing import Any
 
 from scripts.common import GHPMError
 
@@ -14,15 +18,25 @@ def acli_available() -> bool:
     return shutil.which("acli") is not None
 
 
-def bulk_create(json_path: str, yes: bool = False) -> int:
-    """Bulk-create Jira work items from a JSON file via acli.
+def create_issue(issue: dict[str, Any]) -> tuple[int, str]:
+    """Create a single Jira work item from an issue dict via acli.
 
-    Returns acli's exit code. Raises GHPMError if acli is not installed.
+    Writes the issue to a temp JSON file and runs
+    `acli jira workitem create --from-json <file>`. Returns
+    (exit_code, combined_output). Raises GHPMError if acli is not installed.
     """
     if not acli_available():
         raise GHPMError("acli not found on PATH. Install Atlassian CLI and run 'acli jira auth'.")
-    cmd = ["acli", "jira", "workitem", "create-bulk", "--from-json", json_path]
-    if yes:
-        cmd.append("--yes")
-    result = subprocess.run(cmd)
-    return result.returncode
+
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        json.dump(issue, f)
+        path = f.name
+    try:
+        result = subprocess.run(
+            ["acli", "jira", "workitem", "create", "--from-json", path],
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        os.unlink(path)
+    return result.returncode, (result.stdout or "") + (result.stderr or "")

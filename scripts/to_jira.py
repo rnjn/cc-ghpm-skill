@@ -11,7 +11,7 @@ from typing import Any
 
 from rich.console import Console
 
-from scripts.acli_client import acli_available, bulk_create
+from scripts.acli_client import acli_available, create_issue
 from scripts.common import GHPMError, get_today
 
 console = Console()
@@ -48,7 +48,7 @@ def issue_to_jira(
     return {
         "summary": record.get("title") or "",
         "projectKey": project_key,
-        "issueType": issue_type,
+        "type": issue_type,
         "description": build_adf_description(record.get("body") or "", record.get("url")),
     }
 
@@ -146,12 +146,27 @@ def main(args: list[str] | None = None) -> int:
             console.print("Aborted.")
             return 1
 
-    # Fix 3: catch GHPMError from bulk_create
+    # Create issues one at a time (acli create-bulk cannot carry an ADF
+    # description; per-issue `create` accepts it). Continue past failures.
+    total = len(issues)
+    created = 0
+    failed = 0
     try:
-        return bulk_create(str(out_path), yes=True)
+        for idx, issue in enumerate(issues, 1):
+            label = issue.get("summary") or f"item {idx}"
+            rc, output = create_issue(issue)
+            if rc == 0:
+                created += 1
+                console.print(f"[{idx}/{total}] created: {label}")
+            else:
+                failed += 1
+                err_console.print(f"[{idx}/{total}] FAILED: {label}: {output.strip()}")
     except GHPMError as e:
         err_console.print(f"[red]Error: {e}[/red]")
         return 1
+
+    console.print(f"Done: {created} created, {failed} failed")
+    return 0 if failed == 0 else 1
 
 
 if __name__ == "__main__":
