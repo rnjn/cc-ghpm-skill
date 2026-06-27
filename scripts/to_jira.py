@@ -6,14 +6,15 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from rich.console import Console
 
-from scripts.acli_client import acli_available, create_issue
+from scripts.acli_client import acli_available, create_issue, transition_issues
 from scripts.common import GHPMError, get_today
-from scripts.jira_mapping import load_priority_map, map_value
+from scripts.jira_mapping import load_priority_map, load_status_map, map_value
 
 console = Console()
 err_console = Console(stderr=True)
@@ -66,6 +67,24 @@ def iter_issue_records(export: dict[str, Any]) -> list[dict[str, Any]]:
     return [r for r in export.get("items", []) if r.get("type") == "Issue"]
 
 
+def status_target(
+    record: dict[str, Any],
+    *,
+    status_field: str,
+    status_map: dict[str, str],
+    initial_status: str,
+) -> str | None:
+    """Return the Jira status to transition this record to, or None to skip.
+
+    Skips (returns None) when the status is unset, unmapped, or already the
+    project's initial status.
+    """
+    target = map_value((record.get("fields") or {}).get(status_field), status_map)
+    if not target or target == initial_status:
+        return None
+    return target
+
+
 def transform(
     export: dict[str, Any],
     *,
@@ -102,6 +121,13 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--priority-map-file", help="JSON file overriding the GHPM->Jira priority map"
     )
+    parser.add_argument("--status-field", default="Status", help="GHPM field used as Jira status")
+    parser.add_argument("--status-map-file", help="JSON file overriding the GHPM->Jira status map")
+    parser.add_argument(
+        "--initial-status",
+        default="To Do",
+        help="Jira initial status; issues mapping to it are not transitioned",
+    )
     parser.add_argument(
         "--out", help="Output path (default: <project>-jira-YYYY-MM-DD.json in cwd)"
     )
@@ -128,6 +154,12 @@ def main(args: list[str] | None = None) -> int:
         err_console.print(f"[red]{e}[/red]")
         return 1
 
+    try:
+        status_map = load_status_map(parsed.status_map_file)
+    except GHPMError as e:
+        err_console.print(f"[red]{e}[/red]")
+        return 1
+
     records = iter_issue_records(export)
     unmapped = sorted(
         {
@@ -139,6 +171,19 @@ def main(args: list[str] | None = None) -> int:
     )
     for value in unmapped:
         err_console.print(f"[yellow]Warning: priority '{value}' not mapped; omitting.[/yellow]")
+
+    unmapped_status = sorted(
+        {
+            value
+            for r in records
+            if (value := (r.get("fields") or {}).get(parsed.status_field))
+            and map_value(value, status_map) is None
+        }
+    )
+    for value in unmapped_status:
+        err_console.print(
+            f"[yellow]Warning: status '{value}' not mapped; leaving at initial.[/yellow]"
+        )
 
     issues = transform(
         export,
@@ -169,6 +214,22 @@ def main(args: list[str] | None = None) -> int:
     console.print(f"Wrote {len(issues)} issue{'s' if len(issues) != 1 else ''} to {out_path}")
 
     if parsed.dry_run:
+        plan = Counter(
+            t
+            for r in records
+            if (
+                t := status_target(
+                    r,
+                    status_field=parsed.status_field,
+                    status_map=status_map,
+                    initial_status=parsed.initial_status,
+                )
+            )
+        )
+        if plan:
+            console.print("Status transition plan:")
+            for status, count in sorted(plan.items()):
+                console.print(f"  {count} -> {status}")
         return 0
 
     if not acli_available():
@@ -190,12 +251,14 @@ def main(args: list[str] | None = None) -> int:
     total = len(issues)
     created = 0
     failed = 0
+    created_pairs: list[tuple[dict[str, Any], str | None]] = []
     try:
-        for idx, issue in enumerate(issues, 1):
+        for idx, (record, issue) in enumerate(zip(records, issues), 1):
             label = issue.get("summary") or f"item {idx}"
-            rc, _, output = create_issue(issue)
+            rc, key, output = create_issue(issue)
             if rc == 0:
                 created += 1
+                created_pairs.append((record, key))
                 console.print(f"[{idx}/{total}] created: {label}")
             else:
                 failed += 1
@@ -205,6 +268,31 @@ def main(args: list[str] | None = None) -> int:
         return 1
 
     console.print(f"Done: {created} created, {failed} failed")
+
+    groups: dict[str, list[str]] = {}
+    for record, key in created_pairs:
+        if not key:
+            continue
+        target = status_target(
+            record,
+            status_field=parsed.status_field,
+            status_map=status_map,
+            initial_status=parsed.initial_status,
+        )
+        if target:
+            groups.setdefault(target, []).append(key)
+
+    for status, keys in groups.items():
+        rc, out = transition_issues(keys, status)
+        if rc != 0:
+            rc, out = transition_issues(keys, status)  # retry once (indexing lag)
+        if rc == 0:
+            console.print(f"Transitioned {len(keys)} issue(s) -> {status}")
+        else:
+            err_console.print(
+                f"[red]Failed to transition {len(keys)} issue(s) -> {status}: {out.strip()}[/red]"
+            )
+
     return 0 if failed == 0 else 1
 
 
