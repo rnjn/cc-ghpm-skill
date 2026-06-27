@@ -41,3 +41,26 @@ def issue_to_jira(
         "issueType": issue_type,
         "description": build_adf_description(record.get("body") or "", record.get("url")),
     }
+
+
+def transform(
+    export: dict[str, Any],
+    *,
+    project_key: str,
+    type_field: str,
+    default_type: str,
+) -> list[dict[str, Any]]:
+    """Filter export items to Issues and map each to an acli issue object."""
+    issues: list[dict[str, Any]] = []
+    for record in export.get("items", []):
+        if record.get("type") != "Issue":
+            continue
+        issues.append(
+            issue_to_jira(
+                record,
+                project_key=project_key,
+                type_field=type_field,
+                default_type=default_type,
+            )
+        )
+    return issues

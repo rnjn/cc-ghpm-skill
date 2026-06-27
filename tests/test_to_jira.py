@@ -75,3 +75,24 @@ class TestIssueToJira:
             self._record(title=None), project_key="SCOUT", type_field="Type", default_type="Task"
         )
         assert out["summary"] == ""
+
+
+from scripts.to_jira import transform
+
+
+class TestTransform:
+    def test_filters_to_issues_only(self):
+        export = {
+            "items": [
+                {"type": "Issue", "title": "A", "url": "u1", "body": "", "fields": {"Type": "Bug"}},
+                {"type": "PullRequest", "title": "PR", "url": "u2", "body": "", "fields": {}},
+                {"type": "DraftIssue", "title": "D", "url": None, "body": "", "fields": {}},
+            ]
+        }
+        issues = transform(export, project_key="SCOUT", type_field="Type", default_type="Task")
+        assert len(issues) == 1
+        assert issues[0]["summary"] == "A"
+        assert issues[0]["issueType"] == "Bug"
+
+    def test_handles_missing_items_key(self):
+        assert transform({}, project_key="S", type_field="Type", default_type="Task") == []
