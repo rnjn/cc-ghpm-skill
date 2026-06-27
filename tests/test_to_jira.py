@@ -452,3 +452,26 @@ class TestMain:
         err = capsys.readouterr().err
         assert err.count("Blocker") == 1  # warned once despite two issues
         assert "Wishlist" in err
+
+    def test_no_warning_for_mapped_or_unset_priority(self, tmp_path, capsys):
+        export = {
+            "project": "workX",
+            "items": [
+                {
+                    "type": "Issue",
+                    "title": "A",
+                    "url": "u1",
+                    "body": "",
+                    "fields": {"Priority": "High"},
+                },
+                {"type": "Issue", "title": "B", "url": "u2", "body": "", "fields": {}},
+            ],
+        }
+        inp = tmp_path / "p.json"
+        inp.write_text(json.dumps(export))
+        out = tmp_path / "acli.json"
+        rc = main(["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out), "--dry-run"])
+        assert rc == 0
+        err = capsys.readouterr().err
+        assert "not mapped" not in err
+        assert "Warning" not in err

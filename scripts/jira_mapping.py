@@ -22,7 +22,7 @@ def map_priority(value: str | None, value_map: dict[str, str]) -> str | None:
     """Return the Jira priority name for a GHPM value, or None if unset/unmapped."""
     if not value:
         return None
-    return value_map.get(value.lower())
+    return value_map.get(str(value).lower())
 
 
 def load_priority_map(path: str | None) -> dict[str, str]:

@@ -28,6 +28,10 @@ class TestMapPriority:
     def test_unknown_value(self):
         assert map_priority("Blocker", DEFAULT_PRIORITY_MAP) is None
 
+    def test_non_string_value_does_not_raise(self):
+        # A non-string truthy value must not raise; just not match.
+        assert map_priority(123, DEFAULT_PRIORITY_MAP) is None
+
 
 class TestLoadPriorityMap:
     def test_none_returns_defaults_copy(self):
