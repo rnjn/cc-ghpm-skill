@@ -304,3 +304,31 @@ def test_get_project_items_query_includes_type_assignees_drafts(mock_subprocess_
     assert "__typename" in query_arg
     assert "assignees" in query_arg
     assert "DraftIssue" in query_arg
+
+
+def test_get_project_items_query_includes_body(mock_subprocess_run):
+    """The items query must request the issue body."""
+    from scripts.common import get_project_items
+
+    resp = MagicMock()
+    resp.returncode = 0
+    resp.stdout = json.dumps(
+        {
+            "data": {
+                "node": {
+                    "items": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [],
+                    }
+                }
+            }
+        }
+    )
+    resp.stderr = ""
+    mock_subprocess_run.return_value = resp
+
+    get_project_items("PVT_test")
+
+    cmd = mock_subprocess_run.call_args[0][0]
+    query_arg = next(a for a in cmd if a.startswith("query="))
+    assert "body" in query_arg

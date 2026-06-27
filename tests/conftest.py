@@ -169,7 +169,7 @@ def sample_items_response() -> dict:
 
 @pytest.fixture
 def mock_subprocess_run(monkeypatch):
-    """Mock subprocess.run for gh CLI calls."""
+    """Mock subprocess.run for CLI calls."""
     mock = MagicMock()
     monkeypatch.setattr("subprocess.run", mock)
     return mock
