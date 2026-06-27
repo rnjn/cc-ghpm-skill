@@ -218,6 +218,11 @@ class TestParseArgs:
         assert a.dry_run is False
         assert a.yes is False
 
+    def test_priority_defaults(self):
+        a = parse_args(["--input", "x.json", "--jira-project", "SCOUT"])
+        assert a.priority_field == "Priority"
+        assert a.priority_map_file is None
+
 
 class TestMain:
     def test_dry_run_writes_file_and_skips_acli(self, tmp_path):
@@ -390,3 +395,60 @@ class TestMain:
         assert rc == 0
         ci.assert_not_called()
         assert not out.exists()
+
+    def test_priority_in_written_file(self, tmp_path):
+        export = {
+            "project": "workX",
+            "items": [
+                {
+                    "type": "Issue",
+                    "title": "A",
+                    "url": "u1",
+                    "body": "x",
+                    "fields": {"Priority": "Urgent"},
+                },
+            ],
+        }
+        inp = tmp_path / "p.json"
+        inp.write_text(json.dumps(export))
+        out = tmp_path / "acli.json"
+        rc = main(["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out), "--dry-run"])
+        assert rc == 0
+        payload = json.loads(out.read_text())
+        assert payload["issues"][0]["additionalAttributes"] == {"priority": {"name": "Highest"}}
+
+    def test_warns_once_per_distinct_unmapped_priority(self, tmp_path, capsys):
+        export = {
+            "project": "workX",
+            "items": [
+                {
+                    "type": "Issue",
+                    "title": "A",
+                    "url": "u1",
+                    "body": "",
+                    "fields": {"Priority": "Blocker"},
+                },
+                {
+                    "type": "Issue",
+                    "title": "B",
+                    "url": "u2",
+                    "body": "",
+                    "fields": {"Priority": "Blocker"},
+                },
+                {
+                    "type": "Issue",
+                    "title": "C",
+                    "url": "u3",
+                    "body": "",
+                    "fields": {"Priority": "Wishlist"},
+                },
+            ],
+        }
+        inp = tmp_path / "p.json"
+        inp.write_text(json.dumps(export))
+        out = tmp_path / "acli.json"
+        rc = main(["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out), "--dry-run"])
+        assert rc == 0
+        err = capsys.readouterr().err
+        assert err.count("Blocker") == 1  # warned once despite two issues
+        assert "Wishlist" in err

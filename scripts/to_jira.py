@@ -13,7 +13,7 @@ from rich.console import Console
 
 from scripts.acli_client import acli_available, create_issue
 from scripts.common import GHPMError, get_today
-from scripts.jira_mapping import map_priority
+from scripts.jira_mapping import load_priority_map, map_priority
 
 console = Console()
 err_console = Console(stderr=True)
@@ -97,6 +97,12 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--type-field", default="Type", help="GHPM field used as Jira issue type")
     parser.add_argument("--default-type", default="Task", help="Jira type when the field is unset")
     parser.add_argument(
+        "--priority-field", default="Priority", help="GHPM field used as Jira priority"
+    )
+    parser.add_argument(
+        "--priority-map-file", help="JSON file overriding the GHPM->Jira priority map"
+    )
+    parser.add_argument(
         "--out", help="Output path (default: <project>-jira-YYYY-MM-DD.json in cwd)"
     )
     parser.add_argument("--dry-run", action="store_true", help="Write the file; do not call acli")
@@ -116,11 +122,31 @@ def main(args: list[str] | None = None) -> int:
         err_console.print(f"[red]Could not read export '{parsed.input}': {e}[/red]")
         return 1
 
+    try:
+        priority_map = load_priority_map(parsed.priority_map_file)
+    except GHPMError as e:
+        err_console.print(f"[red]{e}[/red]")
+        return 1
+
+    records = iter_issue_records(export)
+    unmapped = sorted(
+        {
+            value
+            for r in records
+            if (value := (r.get("fields") or {}).get(parsed.priority_field))
+            and map_priority(value, priority_map) is None
+        }
+    )
+    for value in unmapped:
+        err_console.print(f"[yellow]Warning: priority '{value}' not mapped; omitting.[/yellow]")
+
     issues = transform(
         export,
         project_key=parsed.jira_project,
         type_field=parsed.type_field,
         default_type=parsed.default_type,
+        priority_field=parsed.priority_field,
+        priority_map=priority_map,
     )
 
     # Fix 2: short-circuit if no issues to import
