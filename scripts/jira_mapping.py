@@ -17,6 +17,15 @@ DEFAULT_PRIORITY_MAP: dict[str, str] = {
     "postponed": "Lowest",
 }
 
+# Case-insensitive keys (lowercase) → Jira status name.
+DEFAULT_STATUS_MAP: dict[str, str] = {
+    "todo": "To Do",
+    "in progress": "In Progress",
+    "in review": "In Review",
+    "blocked": "Blocked",
+    "done": "Done",
+}
+
 
 def map_value(value: str | None, value_map: dict[str, str]) -> str | None:
     """Return the mapped value for a GHPM value, or None if unset/unmapped."""
@@ -25,21 +34,31 @@ def map_value(value: str | None, value_map: dict[str, str]) -> str | None:
     return value_map.get(str(value).lower())
 
 
-def load_priority_map(path: str | None) -> dict[str, str]:
-    """Return the priority map: defaults, optionally overridden/extended by a JSON file.
+def load_value_map(path: str | None, defaults: dict[str, str], label: str) -> dict[str, str]:
+    """Return `defaults`, optionally overridden/extended by a JSON object file.
 
-    The JSON file must be an object of {GHPMValue: JiraName}. Keys are lowercased
-    and merged over the defaults. Raises GHPMError on a missing/invalid file.
+    The file must be an object of {GHPMValue: JiraName}; keys are lowercased and
+    merged over the defaults. Raises GHPMError on a missing/invalid file.
     """
-    result = dict(DEFAULT_PRIORITY_MAP)
+    result = dict(defaults)
     if path is None:
         return result
     try:
         loaded = json.loads(Path(path).read_text())
     except (OSError, json.JSONDecodeError) as e:
-        raise GHPMError(f"Could not read priority map '{path}': {e}")
+        raise GHPMError(f"Could not read {label} map '{path}': {e}")
     if not isinstance(loaded, dict):
-        raise GHPMError(f"Priority map '{path}' must be a JSON object of value->name")
+        raise GHPMError(f"{label} map '{path}' must be a JSON object of value->name")
     for key, name in loaded.items():
         result[str(key).lower()] = name
     return result
+
+
+def load_priority_map(path: str | None) -> dict[str, str]:
+    """Return the priority map: defaults, optionally overridden by a JSON file."""
+    return load_value_map(path, DEFAULT_PRIORITY_MAP, "priority")
+
+
+def load_status_map(path: str | None) -> dict[str, str]:
+    """Return the status map: defaults, optionally overridden by a JSON file."""
+    return load_value_map(path, DEFAULT_STATUS_MAP, "status")

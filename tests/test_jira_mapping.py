@@ -5,7 +5,13 @@ import json
 import pytest
 
 from scripts.common import GHPMError
-from scripts.jira_mapping import DEFAULT_PRIORITY_MAP, load_priority_map, map_value
+from scripts.jira_mapping import (
+    DEFAULT_PRIORITY_MAP,
+    DEFAULT_STATUS_MAP,
+    load_priority_map,
+    load_status_map,
+    map_value,
+)
 
 
 class TestMapValue:
@@ -63,3 +69,39 @@ class TestLoadPriorityMap:
         f.write_text("[1, 2, 3]")
         with pytest.raises(GHPMError):
             load_priority_map(str(f))
+
+
+class TestStatusMap:
+    def test_default_status_map(self):
+        assert DEFAULT_STATUS_MAP == {
+            "todo": "To Do",
+            "in progress": "In Progress",
+            "in review": "In Review",
+            "blocked": "Blocked",
+            "done": "Done",
+        }
+
+    def test_map_value_with_status_map(self):
+        assert map_value("Todo", DEFAULT_STATUS_MAP) == "To Do"
+        assert map_value("in review", DEFAULT_STATUS_MAP) == "In Review"
+        assert map_value("Nope", DEFAULT_STATUS_MAP) is None
+
+    def test_load_status_map_none_returns_defaults_copy(self):
+        m = load_status_map(None)
+        assert m == DEFAULT_STATUS_MAP
+        m["todo"] = "CHANGED"
+        assert DEFAULT_STATUS_MAP["todo"] == "To Do"
+
+    def test_load_status_map_override(self, tmp_path):
+        f = tmp_path / "s.json"
+        f.write_text(json.dumps({"Blocked": "On Hold", "Backlog": "To Do"}))
+        m = load_status_map(str(f))
+        assert m["blocked"] == "On Hold"
+        assert m["backlog"] == "To Do"
+        assert m["done"] == "Done"
+
+    def test_load_status_map_invalid_raises(self, tmp_path):
+        f = tmp_path / "bad.json"
+        f.write_text("[1,2]")
+        with pytest.raises(Exception):
+            load_status_map(str(f))
