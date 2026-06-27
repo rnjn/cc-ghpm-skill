@@ -13,6 +13,7 @@ from rich.console import Console
 
 from scripts.acli_client import acli_available, create_issue
 from scripts.common import GHPMError, get_today
+from scripts.jira_mapping import load_priority_map, map_priority
 
 console = Console()
 err_console = Console(stderr=True)
@@ -42,15 +43,27 @@ def issue_to_jira(
     project_key: str,
     type_field: str,
     default_type: str,
+    priority_field: str = "Priority",
+    priority_map: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Map one GHPM record to one acli issue object."""
     issue_type = record.get("fields", {}).get(type_field) or default_type
-    return {
+    issue: dict[str, Any] = {
         "summary": record.get("title") or "",
         "projectKey": project_key,
         "type": issue_type,
         "description": build_adf_description(record.get("body") or "", record.get("url")),
     }
+    if priority_map:
+        name = map_priority((record.get("fields") or {}).get(priority_field), priority_map)
+        if name:
+            issue["additionalAttributes"] = {"priority": {"name": name}}
+    return issue
+
+
+def iter_issue_records(export: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return export items filtered to GitHub Issues."""
+    return [r for r in export.get("items", []) if r.get("type") == "Issue"]
 
 
 def transform(
@@ -59,21 +72,21 @@ def transform(
     project_key: str,
     type_field: str,
     default_type: str,
+    priority_field: str = "Priority",
+    priority_map: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Filter export items to Issues and map each to an acli issue object."""
-    issues: list[dict[str, Any]] = []
-    for record in export.get("items", []):
-        if record.get("type") != "Issue":
-            continue
-        issues.append(
-            issue_to_jira(
-                record,
-                project_key=project_key,
-                type_field=type_field,
-                default_type=default_type,
-            )
+    return [
+        issue_to_jira(
+            record,
+            project_key=project_key,
+            type_field=type_field,
+            default_type=default_type,
+            priority_field=priority_field,
+            priority_map=priority_map,
         )
-    return issues
+        for record in iter_issue_records(export)
+    ]
 
 
 def parse_args(args: list[str] | None = None) -> argparse.Namespace:
@@ -83,6 +96,12 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--jira-project", required=True, help="Jira project key")
     parser.add_argument("--type-field", default="Type", help="GHPM field used as Jira issue type")
     parser.add_argument("--default-type", default="Task", help="Jira type when the field is unset")
+    parser.add_argument(
+        "--priority-field", default="Priority", help="GHPM field used as Jira priority"
+    )
+    parser.add_argument(
+        "--priority-map-file", help="JSON file overriding the GHPM->Jira priority map"
+    )
     parser.add_argument(
         "--out", help="Output path (default: <project>-jira-YYYY-MM-DD.json in cwd)"
     )
@@ -103,11 +122,31 @@ def main(args: list[str] | None = None) -> int:
         err_console.print(f"[red]Could not read export '{parsed.input}': {e}[/red]")
         return 1
 
+    try:
+        priority_map = load_priority_map(parsed.priority_map_file)
+    except GHPMError as e:
+        err_console.print(f"[red]{e}[/red]")
+        return 1
+
+    records = iter_issue_records(export)
+    unmapped = sorted(
+        {
+            value
+            for r in records
+            if (value := (r.get("fields") or {}).get(parsed.priority_field))
+            and map_priority(value, priority_map) is None
+        }
+    )
+    for value in unmapped:
+        err_console.print(f"[yellow]Warning: priority '{value}' not mapped; omitting.[/yellow]")
+
     issues = transform(
         export,
         project_key=parsed.jira_project,
         type_field=parsed.type_field,
         default_type=parsed.default_type,
+        priority_field=parsed.priority_field,
+        priority_map=priority_map,
     )
 
     # Fix 2: short-circuit if no issues to import

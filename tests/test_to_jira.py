@@ -81,6 +81,41 @@ class TestIssueToJira:
         )
         assert out["summary"] == ""
 
+    def test_adds_priority_when_mapped(self):
+        from scripts.jira_mapping import DEFAULT_PRIORITY_MAP
+
+        out = issue_to_jira(
+            self._record(fields={"Priority": "Urgent"}),
+            project_key="SCOUT",
+            type_field="Type",
+            default_type="Task",
+            priority_field="Priority",
+            priority_map=DEFAULT_PRIORITY_MAP,
+        )
+        assert out["additionalAttributes"] == {"priority": {"name": "Highest"}}
+
+    def test_omits_additional_attributes_when_unmapped(self):
+        from scripts.jira_mapping import DEFAULT_PRIORITY_MAP
+
+        out = issue_to_jira(
+            self._record(fields={"Priority": "Nope"}),
+            project_key="SCOUT",
+            type_field="Type",
+            default_type="Task",
+            priority_field="Priority",
+            priority_map=DEFAULT_PRIORITY_MAP,
+        )
+        assert "additionalAttributes" not in out
+
+    def test_omits_additional_attributes_when_no_priority_map(self):
+        out = issue_to_jira(
+            self._record(),
+            project_key="SCOUT",
+            type_field="Type",
+            default_type="Task",
+        )
+        assert "additionalAttributes" not in out
+
 
 class TestTransform:
     def test_filters_to_issues_only(self):
@@ -98,6 +133,43 @@ class TestTransform:
 
     def test_handles_missing_items_key(self):
         assert transform({}, project_key="S", type_field="Type", default_type="Task") == []
+
+    def test_iter_issue_records_filters_issues(self):
+        from scripts.to_jira import iter_issue_records
+
+        export = {
+            "items": [
+                {"type": "Issue", "title": "A"},
+                {"type": "PullRequest", "title": "PR"},
+                {"type": "DraftIssue", "title": "D"},
+            ]
+        }
+        recs = iter_issue_records(export)
+        assert [r["title"] for r in recs] == ["A"]
+
+    def test_transform_forwards_priority_map(self):
+        from scripts.jira_mapping import DEFAULT_PRIORITY_MAP
+
+        export = {
+            "items": [
+                {
+                    "type": "Issue",
+                    "title": "A",
+                    "url": "u",
+                    "body": "",
+                    "fields": {"Priority": "High"},
+                },
+            ]
+        }
+        issues = transform(
+            export,
+            project_key="SCOUT",
+            type_field="Type",
+            default_type="Task",
+            priority_field="Priority",
+            priority_map=DEFAULT_PRIORITY_MAP,
+        )
+        assert issues[0]["additionalAttributes"] == {"priority": {"name": "High"}}
 
 
 EXPORT = {
@@ -145,6 +217,11 @@ class TestParseArgs:
         assert a.default_type == "Task"
         assert a.dry_run is False
         assert a.yes is False
+
+    def test_priority_defaults(self):
+        a = parse_args(["--input", "x.json", "--jira-project", "SCOUT"])
+        assert a.priority_field == "Priority"
+        assert a.priority_map_file is None
 
 
 class TestMain:
@@ -318,3 +395,83 @@ class TestMain:
         assert rc == 0
         ci.assert_not_called()
         assert not out.exists()
+
+    def test_priority_in_written_file(self, tmp_path):
+        export = {
+            "project": "workX",
+            "items": [
+                {
+                    "type": "Issue",
+                    "title": "A",
+                    "url": "u1",
+                    "body": "x",
+                    "fields": {"Priority": "Urgent"},
+                },
+            ],
+        }
+        inp = tmp_path / "p.json"
+        inp.write_text(json.dumps(export))
+        out = tmp_path / "acli.json"
+        rc = main(["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out), "--dry-run"])
+        assert rc == 0
+        payload = json.loads(out.read_text())
+        assert payload["issues"][0]["additionalAttributes"] == {"priority": {"name": "Highest"}}
+
+    def test_warns_once_per_distinct_unmapped_priority(self, tmp_path, capsys):
+        export = {
+            "project": "workX",
+            "items": [
+                {
+                    "type": "Issue",
+                    "title": "A",
+                    "url": "u1",
+                    "body": "",
+                    "fields": {"Priority": "Blocker"},
+                },
+                {
+                    "type": "Issue",
+                    "title": "B",
+                    "url": "u2",
+                    "body": "",
+                    "fields": {"Priority": "Blocker"},
+                },
+                {
+                    "type": "Issue",
+                    "title": "C",
+                    "url": "u3",
+                    "body": "",
+                    "fields": {"Priority": "Wishlist"},
+                },
+            ],
+        }
+        inp = tmp_path / "p.json"
+        inp.write_text(json.dumps(export))
+        out = tmp_path / "acli.json"
+        rc = main(["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out), "--dry-run"])
+        assert rc == 0
+        err = capsys.readouterr().err
+        assert err.count("Blocker") == 1  # warned once despite two issues
+        assert "Wishlist" in err
+
+    def test_no_warning_for_mapped_or_unset_priority(self, tmp_path, capsys):
+        export = {
+            "project": "workX",
+            "items": [
+                {
+                    "type": "Issue",
+                    "title": "A",
+                    "url": "u1",
+                    "body": "",
+                    "fields": {"Priority": "High"},
+                },
+                {"type": "Issue", "title": "B", "url": "u2", "body": "", "fields": {}},
+            ],
+        }
+        inp = tmp_path / "p.json"
+        inp.write_text(json.dumps(export))
+        out = tmp_path / "acli.json"
+        rc = main(["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out), "--dry-run"])
+        assert rc == 0
+        err = capsys.readouterr().err
+        assert "not mapped" not in err
+        assert "Warning" not in err

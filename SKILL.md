@@ -71,9 +71,9 @@ Writes `<project>-items-YYYY-MM-DD.<ext>` in the current directory when `--outpu
 **Execution**:
 ```bash
 cd ~/.claude/skills/ghpm
-uv run python -m scripts.to_jira --input <ghpm-export.json> --jira-project <KEY> [--type-field Type] [--default-type Task] [--out <file>] [--dry-run] [--yes]
+uv run python -m scripts.to_jira --input <ghpm-export.json> --jira-project <KEY> [--type-field Type] [--default-type Task] [--priority-field Priority] [--priority-map-file <map.json>] [--out <file>] [--dry-run] [--yes]
 ```
-Writes `<project>-jira-YYYY-MM-DD.json` in the current directory when `--out` is omitted. Requires `acli` installed and `acli jira auth` completed. Imports Issues only (PRs/drafts skipped).
+Writes `<project>-jira-YYYY-MM-DD.json` in the current directory when `--out` is omitted. Requires `acli` installed and `acli jira auth` completed. Imports Issues only (PRs/drafts skipped). Maps the GHPM Priority field to Jira priority (default: Low/Medium/High pass through, Urgent→Highest, Postponed→Lowest); override with `--priority-map-file`. Unmapped priority values are omitted with a warning.
 
 ### Show Iterations
 **Intent**: Display iteration info for a project
