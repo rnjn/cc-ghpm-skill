@@ -37,3 +37,41 @@ class TestBuildAdfDescription:
     def test_empty_body_with_url(self):
         doc = build_adf_description("", "https://x/9")
         assert _texts(doc) == ["Imported from GitHub: https://x/9"]
+
+
+from scripts.to_jira import issue_to_jira
+
+
+class TestIssueToJira:
+    def _record(self, **over):
+        rec = {
+            "number": 1,
+            "title": "Fix bug",
+            "type": "Issue",
+            "url": "https://x/1",
+            "body": "details",
+            "fields": {"Type": "Bug"},
+        }
+        rec.update(over)
+        return rec
+
+    def test_maps_core_fields(self):
+        out = issue_to_jira(
+            self._record(), project_key="SCOUT", type_field="Type", default_type="Task"
+        )
+        assert out["summary"] == "Fix bug"
+        assert out["projectKey"] == "SCOUT"
+        assert out["issueType"] == "Bug"
+        assert out["description"]["type"] == "doc"
+
+    def test_issue_type_falls_back_to_default(self):
+        out = issue_to_jira(
+            self._record(fields={}), project_key="SCOUT", type_field="Type", default_type="Task"
+        )
+        assert out["issueType"] == "Task"
+
+    def test_missing_title_becomes_empty_string(self):
+        out = issue_to_jira(
+            self._record(title=None), project_key="SCOUT", type_field="Type", default_type="Task"
+        )
+        assert out["summary"] == ""

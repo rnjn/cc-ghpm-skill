@@ -24,3 +24,20 @@ def build_adf_description(body: str, url: str | None = None) -> dict[str, Any]:
     if not content:
         content.append({"type": "paragraph", "content": []})
     return {"type": "doc", "version": 1, "content": content}
+
+
+def issue_to_jira(
+    record: dict[str, Any],
+    *,
+    project_key: str,
+    type_field: str,
+    default_type: str,
+) -> dict[str, Any]:
+    """Map one GHPM record to one acli issue object."""
+    issue_type = record.get("fields", {}).get(type_field) or default_type
+    return {
+        "summary": record.get("title") or "",
+        "projectKey": project_key,
+        "issueType": issue_type,
+        "description": build_adf_description(record.get("body") or "", record.get("url")),
+    }
