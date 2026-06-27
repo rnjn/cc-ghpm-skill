@@ -61,27 +61,32 @@ def issue_to_jira(
     return issue
 
 
+def iter_issue_records(export: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return export items filtered to GitHub Issues."""
+    return [r for r in export.get("items", []) if r.get("type") == "Issue"]
+
+
 def transform(
     export: dict[str, Any],
     *,
     project_key: str,
     type_field: str,
     default_type: str,
+    priority_field: str = "Priority",
+    priority_map: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Filter export items to Issues and map each to an acli issue object."""
-    issues: list[dict[str, Any]] = []
-    for record in export.get("items", []):
-        if record.get("type") != "Issue":
-            continue
-        issues.append(
-            issue_to_jira(
-                record,
-                project_key=project_key,
-                type_field=type_field,
-                default_type=default_type,
-            )
+    return [
+        issue_to_jira(
+            record,
+            project_key=project_key,
+            type_field=type_field,
+            default_type=default_type,
+            priority_field=priority_field,
+            priority_map=priority_map,
         )
-    return issues
+        for record in iter_issue_records(export)
+    ]
 
 
 def parse_args(args: list[str] | None = None) -> argparse.Namespace:

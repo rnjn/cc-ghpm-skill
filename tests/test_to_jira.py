@@ -134,6 +134,43 @@ class TestTransform:
     def test_handles_missing_items_key(self):
         assert transform({}, project_key="S", type_field="Type", default_type="Task") == []
 
+    def test_iter_issue_records_filters_issues(self):
+        from scripts.to_jira import iter_issue_records
+
+        export = {
+            "items": [
+                {"type": "Issue", "title": "A"},
+                {"type": "PullRequest", "title": "PR"},
+                {"type": "DraftIssue", "title": "D"},
+            ]
+        }
+        recs = iter_issue_records(export)
+        assert [r["title"] for r in recs] == ["A"]
+
+    def test_transform_forwards_priority_map(self):
+        from scripts.jira_mapping import DEFAULT_PRIORITY_MAP
+
+        export = {
+            "items": [
+                {
+                    "type": "Issue",
+                    "title": "A",
+                    "url": "u",
+                    "body": "",
+                    "fields": {"Priority": "High"},
+                },
+            ]
+        }
+        issues = transform(
+            export,
+            project_key="SCOUT",
+            type_field="Type",
+            default_type="Task",
+            priority_field="Priority",
+            priority_map=DEFAULT_PRIORITY_MAP,
+        )
+        assert issues[0]["additionalAttributes"] == {"priority": {"name": "High"}}
+
 
 EXPORT = {
     "project": "workX",
