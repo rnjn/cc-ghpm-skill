@@ -13,6 +13,7 @@ from rich.console import Console
 
 from scripts.acli_client import acli_available, create_issue
 from scripts.common import GHPMError, get_today
+from scripts.jira_mapping import map_priority
 
 console = Console()
 err_console = Console(stderr=True)
@@ -42,15 +43,22 @@ def issue_to_jira(
     project_key: str,
     type_field: str,
     default_type: str,
+    priority_field: str = "Priority",
+    priority_map: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Map one GHPM record to one acli issue object."""
     issue_type = record.get("fields", {}).get(type_field) or default_type
-    return {
+    issue: dict[str, Any] = {
         "summary": record.get("title") or "",
         "projectKey": project_key,
         "type": issue_type,
         "description": build_adf_description(record.get("body") or "", record.get("url")),
     }
+    if priority_map:
+        name = map_priority((record.get("fields") or {}).get(priority_field), priority_map)
+        if name:
+            issue["additionalAttributes"] = {"priority": {"name": name}}
+    return issue
 
 
 def transform(

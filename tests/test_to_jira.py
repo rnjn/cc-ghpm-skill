@@ -81,6 +81,41 @@ class TestIssueToJira:
         )
         assert out["summary"] == ""
 
+    def test_adds_priority_when_mapped(self):
+        from scripts.jira_mapping import DEFAULT_PRIORITY_MAP
+
+        out = issue_to_jira(
+            self._record(fields={"Priority": "Urgent"}),
+            project_key="SCOUT",
+            type_field="Type",
+            default_type="Task",
+            priority_field="Priority",
+            priority_map=DEFAULT_PRIORITY_MAP,
+        )
+        assert out["additionalAttributes"] == {"priority": {"name": "Highest"}}
+
+    def test_omits_additional_attributes_when_unmapped(self):
+        from scripts.jira_mapping import DEFAULT_PRIORITY_MAP
+
+        out = issue_to_jira(
+            self._record(fields={"Priority": "Nope"}),
+            project_key="SCOUT",
+            type_field="Type",
+            default_type="Task",
+            priority_field="Priority",
+            priority_map=DEFAULT_PRIORITY_MAP,
+        )
+        assert "additionalAttributes" not in out
+
+    def test_omits_additional_attributes_when_no_priority_map(self):
+        out = issue_to_jira(
+            self._record(),
+            project_key="SCOUT",
+            type_field="Type",
+            default_type="Task",
+        )
+        assert "additionalAttributes" not in out
+
 
 class TestTransform:
     def test_filters_to_issues_only(self):
