@@ -296,6 +296,7 @@ def get_project_items(
                                 title
                                 state
                                 url
+                                body
                                 assignees(first: 10) { nodes { login } }
                             }
                             ... on PullRequest {
