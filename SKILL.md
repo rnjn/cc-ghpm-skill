@@ -62,6 +62,19 @@ uv run python -m scripts.download_issues --project <name> [--format json|csv] [-
 ```
 Writes `<project>-items-YYYY-MM-DD.<ext>` in the current directory when `--output-file` is omitted.
 
+### Import to Jira
+**Intent**: Import GitHub Issues from a GHPM JSON export into Jira via acli
+**Script**: `to_jira.py`
+**Example invocations**:
+- "ghpm: import the workX export into Jira project SCOUT"
+
+**Execution**:
+```bash
+cd ~/.claude/skills/ghpm
+uv run python -m scripts.to_jira --input <ghpm-export.json> --jira-project <KEY> [--type-field Type] [--default-type Task] [--out <file>] [--dry-run] [--yes]
+```
+Writes `<project>-jira-YYYY-MM-DD.json` in the current directory when `--out` is omitted. Requires `acli` installed and `acli jira auth` completed. Imports Issues only (PRs/drafts skipped).
+
 ### Show Iterations
 **Intent**: Display iteration info for a project
 **Example invocations**:
