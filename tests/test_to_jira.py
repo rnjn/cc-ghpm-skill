@@ -250,7 +250,7 @@ class TestMain:
         inp = _write_export(tmp_path)
         out = tmp_path / "acli.json"
         with patch("scripts.to_jira.acli_available", return_value=True):
-            with patch("scripts.to_jira.create_issue", return_value=(0, "created")) as ci:
+            with patch("scripts.to_jira.create_issue", return_value=(0, "B14-1", "created")) as ci:
                 with patch("builtins.input", return_value="y"):
                     rc = main(["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out)])
         assert rc == 0
@@ -271,7 +271,9 @@ class TestMain:
         inp.write_text(json.dumps(export))
         out = tmp_path / "acli.json"
         with patch("scripts.to_jira.acli_available", return_value=True):
-            with patch("scripts.to_jira.create_issue", side_effect=[(0, "ok"), (1, "boom")]) as ci:
+            with patch(
+                "scripts.to_jira.create_issue", side_effect=[(0, "B14-1", "ok"), (1, None, "boom")]
+            ) as ci:
                 rc = main(
                     ["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out), "--yes"]
                 )
@@ -292,7 +294,7 @@ class TestMain:
         inp = _write_export(tmp_path)
         out = tmp_path / "acli.json"
         with patch("scripts.to_jira.acli_available", return_value=True):
-            with patch("scripts.to_jira.create_issue", return_value=(0, "created")) as ci:
+            with patch("scripts.to_jira.create_issue", return_value=(0, "B14-1", "created")) as ci:
                 with patch("builtins.input", side_effect=AssertionError("should not prompt")):
                     rc = main(
                         [

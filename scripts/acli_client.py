@@ -18,12 +18,12 @@ def acli_available() -> bool:
     return shutil.which("acli") is not None
 
 
-def create_issue(issue: dict[str, Any]) -> tuple[int, str]:
+def create_issue(issue: dict[str, Any]) -> tuple[int, str | None, str]:
     """Create a single Jira work item from an issue dict via acli.
 
     Writes the issue to a temp JSON file and runs
-    `acli jira workitem create --from-json <file>`. Returns
-    (exit_code, combined_output). Raises GHPMError if acli is not installed.
+    `acli jira workitem create --from-json <file> --json`. Returns
+    (exit_code, key_or_None, combined_output). Raises GHPMError if acli is missing.
     """
     if not acli_available():
         raise GHPMError("acli not found on PATH. Install Atlassian CLI and run 'acli jira auth'.")
@@ -33,10 +33,18 @@ def create_issue(issue: dict[str, Any]) -> tuple[int, str]:
         path = f.name
     try:
         result = subprocess.run(
-            ["acli", "jira", "workitem", "create", "--from-json", path],
+            ["acli", "jira", "workitem", "create", "--from-json", path, "--json"],
             capture_output=True,
             text=True,
         )
     finally:
         os.unlink(path)
-    return result.returncode, (result.stdout or "") + (result.stderr or "")
+
+    key: str | None = None
+    try:
+        data = json.loads(result.stdout)
+        if isinstance(data, dict):
+            key = data.get("key")
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return result.returncode, key, (result.stdout or "") + (result.stderr or "")

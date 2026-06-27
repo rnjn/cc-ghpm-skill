@@ -193,7 +193,7 @@ def main(args: list[str] | None = None) -> int:
     try:
         for idx, issue in enumerate(issues, 1):
             label = issue.get("summary") or f"item {idx}"
-            rc, output = create_issue(issue)
+            rc, _, output = create_issue(issue)
             if rc == 0:
                 created += 1
                 console.print(f"[{idx}/{total}] created: {label}")
