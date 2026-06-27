@@ -71,9 +71,9 @@ Writes `<project>-items-YYYY-MM-DD.<ext>` in the current directory when `--outpu
 **Execution**:
 ```bash
 cd ~/.claude/skills/ghpm
-uv run python -m scripts.to_jira --input <ghpm-export.json> --jira-project <KEY> [--type-field Type] [--default-type Task] [--priority-field Priority] [--priority-map-file <map.json>] [--out <file>] [--dry-run] [--yes]
+uv run python -m scripts.to_jira --input <ghpm-export.json> --jira-project <KEY> [--type-field Type] [--default-type Task] [--priority-field Priority] [--priority-map-file <map.json>] [--status-field Status] [--status-map-file <map.json>] [--initial-status "To Do"] [--out <file>] [--dry-run] [--yes]
 ```
-Writes `<project>-jira-YYYY-MM-DD.json` in the current directory when `--out` is omitted. Requires `acli` installed and `acli jira auth` completed. Imports Issues only (PRs/drafts skipped). Maps the GHPM Priority field to Jira priority (default: Low/Medium/High pass through, Urgent→Highest, Postponed→Lowest); override with `--priority-map-file`. Unmapped priority values are omitted with a warning.
+Writes `<project>-jira-YYYY-MM-DD.json` in the current directory when `--out` is omitted. Requires `acli` installed and `acli jira auth` completed. Imports Issues only (PRs/drafts skipped). Maps GHPM Priority to Jira priority (Urgent→Highest, Postponed→Lowest, others pass through). After creating issues, transitions each to the Jira status mapping its GHPM Status (Todo→To Do, etc.); issues already at the initial status are not transitioned. Unmapped priority/status values are skipped with a warning. Override maps with `--priority-map-file` / `--status-map-file`. `--dry-run` writes the file and prints the status transition plan without calling acli.
 
 ### Show Iterations
 **Intent**: Display iteration info for a project

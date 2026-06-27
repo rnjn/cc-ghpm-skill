@@ -223,6 +223,12 @@ class TestParseArgs:
         assert a.priority_field == "Priority"
         assert a.priority_map_file is None
 
+    def test_status_defaults(self):
+        a = parse_args(["--input", "x.json", "--jira-project", "SCOUT"])
+        assert a.status_field == "Status"
+        assert a.status_map_file is None
+        assert a.initial_status == "To Do"
+
 
 class TestMain:
     def test_dry_run_writes_file_and_skips_acli(self, tmp_path):
@@ -250,7 +256,7 @@ class TestMain:
         inp = _write_export(tmp_path)
         out = tmp_path / "acli.json"
         with patch("scripts.to_jira.acli_available", return_value=True):
-            with patch("scripts.to_jira.create_issue", return_value=(0, "created")) as ci:
+            with patch("scripts.to_jira.create_issue", return_value=(0, "B14-1", "created")) as ci:
                 with patch("builtins.input", return_value="y"):
                     rc = main(["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out)])
         assert rc == 0
@@ -271,7 +277,9 @@ class TestMain:
         inp.write_text(json.dumps(export))
         out = tmp_path / "acli.json"
         with patch("scripts.to_jira.acli_available", return_value=True):
-            with patch("scripts.to_jira.create_issue", side_effect=[(0, "ok"), (1, "boom")]) as ci:
+            with patch(
+                "scripts.to_jira.create_issue", side_effect=[(0, "B14-1", "ok"), (1, None, "boom")]
+            ) as ci:
                 rc = main(
                     ["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out), "--yes"]
                 )
@@ -292,7 +300,7 @@ class TestMain:
         inp = _write_export(tmp_path)
         out = tmp_path / "acli.json"
         with patch("scripts.to_jira.acli_available", return_value=True):
-            with patch("scripts.to_jira.create_issue", return_value=(0, "created")) as ci:
+            with patch("scripts.to_jira.create_issue", return_value=(0, "B14-1", "created")) as ci:
                 with patch("builtins.input", side_effect=AssertionError("should not prompt")):
                     rc = main(
                         [
@@ -475,3 +483,165 @@ class TestMain:
         err = capsys.readouterr().err
         assert "not mapped" not in err
         assert "Warning" not in err
+
+    def _status_export(self):
+        return {
+            "project": "workX",
+            "items": [
+                {
+                    "type": "Issue",
+                    "title": "A",
+                    "url": "u1",
+                    "body": "",
+                    "fields": {"Status": "In Progress"},
+                },
+                {
+                    "type": "Issue",
+                    "title": "B",
+                    "url": "u2",
+                    "body": "",
+                    "fields": {"Status": "In Progress"},
+                },
+                {
+                    "type": "Issue",
+                    "title": "C",
+                    "url": "u3",
+                    "body": "",
+                    "fields": {"Status": "Done"},
+                },
+                {
+                    "type": "Issue",
+                    "title": "D",
+                    "url": "u4",
+                    "body": "",
+                    "fields": {"Status": "Todo"},
+                },
+            ],
+        }
+
+    def test_transitions_grouped_by_status_skipping_initial(self, tmp_path):
+        inp = tmp_path / "s.json"
+        inp.write_text(json.dumps(self._status_export()))
+        out = tmp_path / "acli.json"
+        with patch("scripts.to_jira.acli_available", return_value=True):
+            with patch(
+                "scripts.to_jira.create_issue",
+                side_effect=[(0, "K1", "ok"), (0, "K2", "ok"), (0, "K3", "ok"), (0, "K4", "ok")],
+            ):
+                with patch("scripts.to_jira.transition_issues", return_value=(0, 0, "")) as tr:
+                    rc = main(
+                        ["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out), "--yes"]
+                    )
+        assert rc == 0
+        # Grouped: In Progress -> [K1, K2], Done -> [K3]; Todo (==initial) skipped.
+        calls = {c.args[1]: c.args[0] for c in tr.call_args_list}
+        assert calls["In Progress"] == ["K1", "K2"]
+        assert calls["Done"] == ["K3"]
+        assert "To Do" not in calls
+
+    def test_unmapped_status_warns_once_and_skips(self, tmp_path, capsys):
+        export = {
+            "project": "workX",
+            "items": [
+                {
+                    "type": "Issue",
+                    "title": "A",
+                    "url": "u1",
+                    "body": "",
+                    "fields": {"Status": "Weird"},
+                },
+                {
+                    "type": "Issue",
+                    "title": "B",
+                    "url": "u2",
+                    "body": "",
+                    "fields": {"Status": "Weird"},
+                },
+            ],
+        }
+        inp = tmp_path / "s.json"
+        inp.write_text(json.dumps(export))
+        out = tmp_path / "acli.json"
+        with patch("scripts.to_jira.acli_available", return_value=True):
+            with patch(
+                "scripts.to_jira.create_issue", side_effect=[(0, "K1", "ok"), (0, "K2", "ok")]
+            ):
+                with patch("scripts.to_jira.transition_issues") as tr:
+                    rc = main(
+                        ["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out), "--yes"]
+                    )
+        assert rc == 0
+        tr.assert_not_called()
+        assert capsys.readouterr().err.count("Weird") == 1
+
+    def test_failed_transition_group_retried_once(self, tmp_path):
+        export = {
+            "project": "workX",
+            "items": [
+                {
+                    "type": "Issue",
+                    "title": "A",
+                    "url": "u1",
+                    "body": "",
+                    "fields": {"Status": "Done"},
+                },
+            ],
+        }
+        inp = tmp_path / "s.json"
+        inp.write_text(json.dumps(export))
+        out = tmp_path / "acli.json"
+        with patch("scripts.to_jira.acli_available", return_value=True):
+            with patch("scripts.to_jira.create_issue", side_effect=[(0, "K1", "ok")]):
+                with patch(
+                    "scripts.to_jira.transition_issues",
+                    side_effect=[(0, 1, "lag"), (1, 0, "")],
+                ) as tr:
+                    rc = main(
+                        ["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out), "--yes"]
+                    )
+        assert rc == 0
+        assert tr.call_count == 2  # first failed, retried once
+
+    def test_created_without_key_warns_and_skips_transition(self, tmp_path, capsys):
+        export = {
+            "project": "workX",
+            "items": [
+                {
+                    "type": "Issue",
+                    "title": "A",
+                    "url": "u1",
+                    "body": "",
+                    "fields": {"Status": "Done"},
+                },
+            ],
+        }
+        inp = tmp_path / "s.json"
+        inp.write_text(json.dumps(export))
+        out = tmp_path / "acli.json"
+        from unittest.mock import MagicMock
+
+        tr = MagicMock()
+        with patch("scripts.to_jira.acli_available", return_value=True):
+            with patch("scripts.to_jira.create_issue", side_effect=[(0, None, "ok")]):
+                with patch("scripts.to_jira.transition_issues", tr):
+                    rc = main(
+                        ["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out), "--yes"]
+                    )
+        assert rc == 0
+        tr.assert_not_called()
+        assert "could not capture its key" in capsys.readouterr().err
+
+    def test_dry_run_prints_status_plan_and_calls_nothing(self, tmp_path, capsys):
+        inp = tmp_path / "s.json"
+        inp.write_text(json.dumps(self._status_export()))
+        out = tmp_path / "acli.json"
+        with patch("scripts.to_jira.create_issue") as ci:
+            with patch("scripts.to_jira.transition_issues") as tr:
+                rc = main(
+                    ["--input", str(inp), "--jira-project", "SCOUT", "--out", str(out), "--dry-run"]
+                )
+        assert rc == 0
+        ci.assert_not_called()
+        tr.assert_not_called()
+        outerr = capsys.readouterr().out
+        assert "In Progress" in outerr and "Done" in outerr
