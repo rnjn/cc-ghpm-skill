@@ -58,6 +58,7 @@ def item_to_record(item: dict[str, Any]) -> dict[str, Any]:
         "type": content.get("__typename"),
         "state": content.get("state"),
         "url": content.get("url"),
+        "body": content.get("body"),
         "assignees": assignees,
         "fields": extract_fields(item),
     }

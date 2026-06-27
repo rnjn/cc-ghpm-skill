@@ -52,6 +52,7 @@ class TestItemToRecord:
                 "title": "Fix login bug",
                 "state": "OPEN",
                 "url": "https://github.com/o/r/issues/123",
+                "body": "Steps to reproduce",
                 "assignees": {"nodes": [{"login": "alice"}]},
             },
             "fieldValues": {"nodes": [{"field": {"name": "Status"}, "name": "In Progress"}]},
@@ -62,9 +63,14 @@ class TestItemToRecord:
             "type": "Issue",
             "state": "OPEN",
             "url": "https://github.com/o/r/issues/123",
+            "body": "Steps to reproduce",
             "assignees": ["alice"],
             "fields": {"Status": "In Progress"},
         }
+
+    def test_body_is_none_when_absent(self):
+        item = {"content": {"__typename": "Issue", "title": "x"}, "fieldValues": {"nodes": []}}
+        assert item_to_record(item)["body"] is None
 
     def test_normalizes_pull_request(self):
         item = {
