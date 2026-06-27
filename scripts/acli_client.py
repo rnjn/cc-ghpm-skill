@@ -48,3 +48,29 @@ def create_issue(issue: dict[str, Any]) -> tuple[int, str | None, str]:
     except (json.JSONDecodeError, TypeError):
         pass
     return result.returncode, key, (result.stdout or "") + (result.stderr or "")
+
+
+def transition_issues(keys: list[str], status: str) -> tuple[int, str]:
+    """Transition the given issue keys to a target status via acli (batched).
+
+    Returns (exit_code, combined_output). Raises GHPMError if acli is missing.
+    """
+    if not acli_available():
+        raise GHPMError("acli not found on PATH. Install Atlassian CLI and run 'acli jira auth'.")
+    result = subprocess.run(
+        [
+            "acli",
+            "jira",
+            "workitem",
+            "transition",
+            "--key",
+            ",".join(keys),
+            "--status",
+            status,
+            "--yes",
+            "--ignore-errors",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode, (result.stdout or "") + (result.stderr or "")

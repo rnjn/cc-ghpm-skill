@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from scripts.acli_client import acli_available, create_issue
+from scripts.acli_client import acli_available, create_issue, transition_issues
 from scripts.common import GHPMError
 
 
@@ -50,3 +50,32 @@ def test_create_issue_raises_when_acli_missing(monkeypatch):
     monkeypatch.setattr("scripts.acli_client.shutil.which", lambda name: None)
     with pytest.raises(GHPMError, match="acli"):
         create_issue({"summary": "x"})
+
+
+def test_transition_issues_builds_batched_command(mock_subprocess_run, monkeypatch):
+    monkeypatch.setattr("scripts.acli_client.shutil.which", lambda name: "/usr/bin/acli")
+    mock_subprocess_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+
+    rc, output = transition_issues(["B14-1", "B14-2"], "Done")
+
+    assert rc == 0
+    assert output == "ok"
+    cmd = mock_subprocess_run.call_args[0][0]
+    assert cmd == [
+        "acli",
+        "jira",
+        "workitem",
+        "transition",
+        "--key",
+        "B14-1,B14-2",
+        "--status",
+        "Done",
+        "--yes",
+        "--ignore-errors",
+    ]
+
+
+def test_transition_issues_raises_when_acli_missing(monkeypatch):
+    monkeypatch.setattr("scripts.acli_client.shutil.which", lambda name: None)
+    with pytest.raises(GHPMError, match="acli"):
+        transition_issues(["B14-1"], "Done")
