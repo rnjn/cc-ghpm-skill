@@ -18,8 +18,8 @@ DEFAULT_PRIORITY_MAP: dict[str, str] = {
 }
 
 
-def map_priority(value: str | None, value_map: dict[str, str]) -> str | None:
-    """Return the Jira priority name for a GHPM value, or None if unset/unmapped."""
+def map_value(value: str | None, value_map: dict[str, str]) -> str | None:
+    """Return the mapped value for a GHPM value, or None if unset/unmapped."""
     if not value:
         return None
     return value_map.get(str(value).lower())

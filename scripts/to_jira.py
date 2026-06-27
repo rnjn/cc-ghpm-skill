@@ -13,7 +13,7 @@ from rich.console import Console
 
 from scripts.acli_client import acli_available, create_issue
 from scripts.common import GHPMError, get_today
-from scripts.jira_mapping import load_priority_map, map_priority
+from scripts.jira_mapping import load_priority_map, map_value
 
 console = Console()
 err_console = Console(stderr=True)
@@ -55,7 +55,7 @@ def issue_to_jira(
         "description": build_adf_description(record.get("body") or "", record.get("url")),
     }
     if priority_map:
-        name = map_priority((record.get("fields") or {}).get(priority_field), priority_map)
+        name = map_value((record.get("fields") or {}).get(priority_field), priority_map)
         if name:
             issue["additionalAttributes"] = {"priority": {"name": name}}
     return issue
@@ -134,7 +134,7 @@ def main(args: list[str] | None = None) -> int:
             value
             for r in records
             if (value := (r.get("fields") or {}).get(parsed.priority_field))
-            and map_priority(value, priority_map) is None
+            and map_value(value, priority_map) is None
         }
     )
     for value in unmapped:
